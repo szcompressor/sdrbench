@@ -20,6 +20,8 @@ def main(argv=None) -> int:
     pd = sub.add_parser("download", help="download a dataset variant, or some of its fields")
     pd.add_argument("dataset")
     pd.add_argument("fields", nargs="*", help="field names (default: all files)")
+    pd.add_argument("-o", "--output", default=None,
+                    help="save plain files under this directory as <dir>/<variant>/<file> (default: keep in cache)")
     pd.add_argument("--cache", default=None, help="cache directory (default: HF cache / ~/.cache/sdrbench)")
     a = p.parse_args(argv)
 
@@ -42,7 +44,7 @@ def main(argv=None) -> int:
             d = core.dataset(a.dataset, cache=a.cache)
             targets = [d.field(n) for n in a.fields] if a.fields else d.files
             for f in targets:
-                print(f.download(a.cache))
+                print(f.download(a.output, cache=a.cache))
     except KeyError as e:
         print(e.args[0], file=sys.stderr)
         return 1

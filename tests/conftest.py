@@ -3,6 +3,7 @@ import io
 import json
 import tarfile
 import zipfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -65,8 +66,13 @@ def fake_dataset(tmp_path, monkeypatch):
         (hub / "v1" / name).write_bytes(data)
     calls = []
 
-    def fake_hf(f, cache):
+    def fake_hf(f, cache, local_dir=None):
         calls.append(f.path)
+        if local_dir is not None:  # mimic hf_hub_download(local_dir=...): real file at <dir>/<path>
+            dest = Path(local_dir) / f.path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes((hub / f.path).read_bytes())
+            return dest
         return hub / f.path
 
     monkeypatch.setattr(core, "_download_hf", fake_hf)

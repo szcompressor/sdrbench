@@ -30,7 +30,7 @@ def test_getitem_returns_c_order_array(fake_dataset):
 
 
 def test_fallback_to_globus_when_hf_fails(fake_dataset, monkeypatch):
-    def broken(f, cache):
+    def broken(f, cache, local_dir=None):
         raise OSError("HF is down")
     monkeypatch.setattr(core, "_download_hf", broken)
     with pytest.warns(UserWarning, match="falling back"):
@@ -43,19 +43,19 @@ def test_fallback_to_globus_when_hf_fails(fake_dataset, monkeypatch):
 
 def test_globus_bytes_equal_hf(fake_dataset):
     f = sdrbench.dataset("fake").field("sub/b")
-    g = f.download(fake_dataset["cache"], source="globus")
+    g = f.download(cache=fake_dataset["cache"], source="globus")
     assert g.read_bytes() == (fake_dataset["hub"] / "v1/sub/b.d64").read_bytes()
     # archive is unpacked once and reused
     core.catalog()["datasets"]["fake"]["variants"]["v1"]["archive"]["url"] = "file:///nonexistent.tar.gz"
-    assert sdrbench.dataset("fake").field("a").download(fake_dataset["cache"], source="globus").exists()
+    assert sdrbench.dataset("fake").field("a").download(cache=fake_dataset["cache"], source="globus").exists()
 
 
 def test_globus_sha_mismatch_detected(fake_dataset):
     f = sdrbench.dataset("fake").field("a")
-    p = f.download(fake_dataset["cache"], source="globus")
+    p = f.download(cache=fake_dataset["cache"], source="globus")
     p.write_bytes(b"\x00" * p.stat().st_size)
     with pytest.raises(IOError, match="sha256 mismatch"):
-        f.download(fake_dataset["cache"], source="globus")
+        f.download(cache=fake_dataset["cache"], source="globus")
 
 
 def test_errors(fake_dataset):
@@ -78,6 +78,9 @@ def test_cli(fake_dataset, capsys):
     out = capsys.readouterr().out
     assert "2x3x4" in out and "<f4" in out
     assert cli(["download", "fake", "a", "--cache", str(fake_dataset["cache"])]) == 0
+    out_dir = fake_dataset["cache"].parent / "out"
+    assert cli(["download", "fake", "a", "sub/b", "-o", str(out_dir)]) == 0
+    assert (out_dir / "v1" / "a.f32").is_file() and (out_dir / "v1" / "sub" / "b.d64").is_file()
     assert cli(["download", "fake", "nope"]) == 1
 
 
@@ -85,7 +88,7 @@ def test_derived_transposed_variant(fake_dataset, monkeypatch):
     t = sdrbench.dataset("fake", "v1t", cache=fake_dataset["cache"])["a"]
     assert t.shape == (4, 2, 3) and t.flags.c_contiguous
     np.testing.assert_array_equal(t, fake_dataset["a"].transpose(2, 0, 1))
-    def broken(f, cache):
+    def broken(f, cache, local_dir=None):
         raise OSError("down")
     monkeypatch.setattr(core, "_download_hf", broken)
     with pytest.warns(UserWarning):
@@ -106,3 +109,16 @@ def test_case_insensitive_lookup(fake_dataset, monkeypatch):
     assert ds.field("QV").path == "v1/QV.f32" and ds.field("Qv").path == "v1/Qv.f32"
     with pytest.raises(KeyError, match="ambiguous"):
         ds.field("qv")
+
+
+def test_save_plain_files_to_directory(fake_dataset, tmp_path):
+    ds = sdrbench.dataset("fake", cache=fake_dataset["cache"])
+    p = ds.field("a").download(tmp_path / "data")
+    assert p == tmp_path / "data" / "v1" / "a.f32" and not p.is_symlink()
+    assert p.read_bytes() == fake_dataset["a"].tobytes()
+    paths = ds.download(tmp_path / "all")
+    assert sorted(x.relative_to(tmp_path / "all").as_posix() for x in paths) == ["v1/a.f32", "v1/notes.txt", "v1/sub/b.d64"]
+    # Globus source: file is placed in the directory too, original name, verified bytes
+    g = ds.field("sub/b").download(tmp_path / "g", source="globus")
+    assert g == tmp_path / "g" / "v1" / "sub" / "b.d64" and g.read_bytes() == fake_dataset["b"].tobytes()
+    assert not list((tmp_path / "g").rglob("*.partial"))

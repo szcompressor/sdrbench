@@ -17,6 +17,10 @@ nyx.fields                               # ['baryon_density', 'dark_matter_densi
 t = nyx["temperature"]                   # numpy memmap, float32, shape (512, 512, 512)
 for name, x in nyx.items(): ...          # downloads each field when reached
 sdrbench.load("cesm-atm", "CLDHGH")      # one-liner
+
+# save the raw files (original SDRBench names) to a directory of your choice
+nyx.field("temperature").download("data/")   # -> data/512x512x512/temperature.f32
+nyx.download("data/")                        # every file of the variant
 ```
 
 Compress with SZ3 through [pysz](https://pypi.org/project/pysz/):
@@ -39,7 +43,7 @@ Command line:
 ```bash
 sdrbench list
 sdrbench info hurricane-isabel/Pf
-sdrbench download nyx temperature
+sdrbench download nyx temperature -o data/     # plain files under data/<variant>/
 ```
 
 - **Field names** are the physical variables (`CLDHGH`, `T`, `temperature`); dtype and shape come

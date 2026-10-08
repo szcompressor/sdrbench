@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import warnings
 from dataclasses import dataclass
 from functools import lru_cache
@@ -46,9 +47,13 @@ class Field:
     def filename(self) -> str:
         return self.path.rsplit("/", 1)[-1]
 
-    def download(self, cache=None, source: str | None = None) -> Path:
-        """Local path of the file (downloaded and cached on first use)."""
-        return _fetch(self, cache, source)
+    def download(self, dir=None, *, cache=None, source: str | None = None) -> Path:
+        """Download the file and return its local path.
+
+        Without ``dir`` the file stays in the cache. With ``dir`` it is saved as a plain file
+        under its original SDRBench name, ``<dir>/<variant>/<file>``, and that path is returned.
+        """
+        return _fetch(self, cache, source, local_dir=dir)
 
     def load(self, cache=None, mmap: bool = True, source: str | None = None):
         """The file as a numpy array with its catalog dtype and C-order shape."""
@@ -56,7 +61,7 @@ class Field:
 
         if not self.dtype:
             raise ValueError(f"{self.path} is not a raw array; use .download() to get the file")
-        p = self.download(cache, source)
+        p = self.download(cache=cache, source=source)
         if self.transpose:  # derived layout: read the stored order, return a C-contiguous copy
             stored = tuple(self.shape[self.transpose.index(i)] for i in range(len(self.shape)))
             x = np.memmap(p, dtype=self.dtype, mode="r", shape=stored)
@@ -139,9 +144,9 @@ class Dataset:
     def nbytes(self) -> int:
         return sum(f.nbytes for f in self.files)
 
-    def download(self, cache=None, source: str | None = None) -> list[Path]:
-        """Download every file of this variant; returns local paths."""
-        return [f.download(cache or self.cache, source) for f in self.files]
+    def download(self, dir=None, *, source: str | None = None) -> list[Path]:
+        """Download every file of this variant (to ``dir`` as plain files, or into the cache)."""
+        return [f.download(dir, cache=self.cache, source=source) for f in self.files]
 
     def __repr__(self) -> str:
         shapes = sorted({"x".join(map(str, f.shape)) for f in self._fields.values()})
@@ -174,11 +179,13 @@ def load(name: str, field: str, variant: str | None = None, cache=None, mmap: bo
 
 
 # downloading ------------------------------------------------------------------------
-def _download_hf(f: Field, cache) -> Path:
+def _download_hf(f: Field, cache, local_dir=None) -> Path:
     from huggingface_hub import hf_hub_download
 
     repo = catalog()["datasets"][f.dataset]["repo"]
     kwargs = {"cache_dir": str(Path(cache) / "hf")} if cache is not None else {}
+    if local_dir is not None:
+        kwargs["local_dir"] = str(local_dir)  # real file at <local_dir>/<path>, no cache copy
     return Path(hf_hub_download(repo_id=repo, filename=f.path, repo_type="dataset", **kwargs))
 
 
@@ -196,18 +203,36 @@ def _download_globus(f: Field, cache) -> Path:
     return local
 
 
-def _fetch(f: Field, cache, source: str | None) -> Path:
+def _place(src: Path, local_dir, f: Field) -> Path:
+    """Put a cached Globus file at <local_dir>/<path> (hard link if possible, else copy)."""
+    if local_dir is None:
+        return src
+    dest = Path(local_dir) / f.path
+    if dest.exists() and dest.stat().st_size == f.nbytes:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".partial")
+    tmp.unlink(missing_ok=True)
+    try:
+        os.link(src, tmp)
+    except OSError:
+        shutil.copyfile(src, tmp)
+    os.replace(tmp, dest)
+    return dest
+
+
+def _fetch(f: Field, cache, source: str | None, local_dir=None) -> Path:
     """Hugging Face first; if that fails, the original archive on Globus."""
     source = source or os.environ.get("SDRBENCH_SOURCE", "auto")
     if source not in ("auto", "hf", "globus"):
         raise ValueError("source must be 'auto', 'hf' or 'globus'")
     if source == "globus":
-        return _download_globus(f, cache)
+        return _place(_download_globus(f, cache), local_dir, f)
     try:
-        return _download_hf(f, cache)
+        return _download_hf(f, cache, local_dir)
     except Exception as e:  # network error, HF outage, file missing on the mirror, ...
         if source == "hf":
             raise
         warnings.warn(f"Hugging Face download of {f.path} failed ({type(e).__name__}: {e}); "
                       f"falling back to the original SDRBench archive on Globus", stacklevel=3)
-        return _download_globus(f, cache)
+        return _place(_download_globus(f, cache), local_dir, f)

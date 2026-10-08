@@ -11,7 +11,7 @@ pytestmark = pytest.mark.online
 
 def test_hf_download_matches_catalog(tmp_path):
     f = sdrbench.dataset("exaalt").field("xx")  # 11 MB file from a 60 MB archive
-    p = f.download(tmp_path, source="hf")
+    p = f.download(cache=tmp_path, source="hf")
     assert hashlib.sha256(p.read_bytes()).hexdigest() == f.sha256
 
 
@@ -24,7 +24,7 @@ def test_default_api(tmp_path):
 
 def test_globus_and_hf_give_identical_bytes(tmp_path):
     f = sdrbench.dataset("exaalt").field("vx")
-    assert f.download(tmp_path, source="hf").read_bytes() == f.download(tmp_path, source="globus").read_bytes()
+    assert f.download(cache=tmp_path, source="hf").read_bytes() == f.download(cache=tmp_path, source="globus").read_bytes()
 
 
 def test_multidimensional_c_order(tmp_path):
@@ -45,3 +45,10 @@ def test_card_example_runs(tmp_path, monkeypatch, capsys):
     d = sdrbench.catalog()["datasets"]["exaalt"]
     exec(compile(sync.card_python("exaalt", d), "card", "exec"), {})
     assert "ratio" in capsys.readouterr().out
+
+
+def test_save_to_directory_from_hf(tmp_path):
+    f = sdrbench.dataset("exaalt").field("vy")
+    p = f.download(tmp_path / "data", source="hf")
+    assert p == tmp_path / "data" / "2869440" / "vy.f32" and p.is_file() and not p.is_symlink()
+    assert hashlib.sha256(p.read_bytes()).hexdigest() == f.sha256
