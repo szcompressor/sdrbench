@@ -783,7 +783,7 @@
   },
   "miranda": {
    "title": "Miranda",
-   "description": "Hydrodynamics code for large turbulence simulations. 7 fields of 256x384x384 (double precision), and a 3072x3072x3072 field.",
+   "description": "Hydrodynamics code for large turbulence simulations (Rayleigh-Taylor instability). 256x384x384: 7 double-precision fields of an early time step (pressure, viscocity and diffusivity are legacy names of time-derivative restart fields); 3072x3072x3072: one single-precision density field of a late time step in 96 slabs.",
    "source": "LLNL; contact Peter Lindstrom (lindstrom2@llnl.gov)",
    "globus_dir": "Miranda",
    "variants": {
@@ -802,7 +802,21 @@
      ]
     },
     "3072x3072x3072": {
-     "archive": "Miranda/SDRBENCH-Miranda-3072x3072x3072.tar.gz"
+     "archive": "Miranda/SDRBENCH-Miranda-3072x3072x3072.tar.gz",
+     "rules": [
+      {
+       "glob": "density-*.f32",
+       "dtype": "<f4",
+       "shape": [
+        32,
+        3072,
+        3072
+       ],
+       "pattern": "density-(\\d+)\\.f32",
+       "name": "density/{0}"
+      }
+     ],
+     "note": "A single 3072^3 single-precision density field of a late Rayleigh-Taylor time step, split into 96 slabs density/00 ... density/95 of shape (32, 3072, 3072) along the slowest axis; np.concatenate of the slabs in order gives the full (3072, 3072, 3072) field."
     }
    }
   },
@@ -819,12 +833,36 @@
   },
   "basilisk-turbulence": {
    "title": "Basilisk-Turbulence",
-   "description": "Decaying turbulence simulation with Basilisk (http://basilisk.fr/). Velocity fields u, v of 1501x1024x1024 and 1001x2048x2048 (time x space), single precision, little-endian.",
+   "description": "2D decaying turbulence at Re = 10,000 simulated with Basilisk (http://basilisk.fr/): time-varying 2D velocity fields u and v on 1024x1024 (1501 time steps) and 2048x2048 (1001 time steps) grids, single precision, little-endian; shapes are (time, y, x). The first time step is an all-zero placeholder.",
    "source": "M. Xia, Y. Li, P. Jiao, B. Wang, X. Liang and H. Guo, \"Time-Varying Vector Field Compression with Preserved Critical Point Trajectories,\" IEEE ICDE 2026, pp. 2235-2249, doi:10.1109/ICDE65706.2026.00168",
    "globus_dir": "Basilisk-Turbulence",
    "variants": {
     "basilisk": {
-     "archive": "Basilisk-Turbulence/SDRBENCH-Basilisk-Turbulence.tar.gz"
+     "archive": "Basilisk-Turbulence/SDRBENCH-Basilisk-Turbulence.tar.gz",
+     "rules": [
+      {
+       "glob": "*_1024x1024x1501Re10k.f32",
+       "dtype": "<f4",
+       "shape": [
+        1501,
+        1024,
+        1024
+       ],
+       "pattern": "([uv])_(\\d+)x\\d+x\\d+Re10k\\.f32",
+       "name": "{1}/{0}"
+      },
+      {
+       "glob": "*_2048x2048x1001Re10k.f32",
+       "dtype": "<f4",
+       "shape": [
+        1001,
+        2048,
+        2048
+       ],
+       "pattern": "([uv])_(\\d+)x\\d+x\\d+Re10k\\.f32",
+       "name": "{1}/{0}"
+      }
+     ]
     }
    }
   },

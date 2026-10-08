@@ -548,6 +548,7 @@ license: other
 license_name: sdrbench
 license_link: https://sdrbench.github.io/
 pretty_name: "SDRBench: {d['title']}"
+viewer: false
 tags:
 - scientific-data
 - lossy-compression
