@@ -32,6 +32,9 @@ on:
   push:
     tags: ["v*"]
 
+env:
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+
 concurrency:
   group: sync-and-release
   cancel-in-progress: false

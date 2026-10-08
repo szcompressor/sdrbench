@@ -61,7 +61,7 @@ def test_globus_sha_mismatch_detected(fake_dataset):
 def test_errors(fake_dataset):
     with pytest.raises(KeyError, match="unknown dataset"):
         sdrbench.dataset("nope")
-    with pytest.raises(KeyError, match="no variant"):
+    with pytest.raises(KeyError, match="unknown fake variant 'v9'"):
         sdrbench.dataset("fake", "v9")
     with pytest.raises(KeyError, match="no field 'zzz'"):
         sdrbench.dataset("fake")["zzz"]
@@ -92,3 +92,17 @@ def test_derived_transposed_variant(fake_dataset, monkeypatch):
         g = sdrbench.dataset("fake", "v1t").field("a").load(fake_dataset["cache"])
     np.testing.assert_array_equal(g, t)
     assert (fake_dataset["cache"] / "globus" / "fake" / "v1" / "a.f32").exists()  # base variant's folder
+
+
+def test_case_insensitive_lookup(fake_dataset, monkeypatch):
+    assert sdrbench.dataset("FAKE").name == "fake" and sdrbench.dataset("Fake/V2").variant == "v2"
+    ds = sdrbench.dataset("fake")
+    assert ds.field("A") is ds.field("a") and ds.field("SUB/B").name == "sub/b"
+    assert ds.fields == ["a", "sub/b"]              # original names are what is listed
+    # two names differing only in case: exact matches win, other spellings are ambiguous
+    v1 = fake_dataset["catalog"]["datasets"]["fake"]["variants"]["v1"]["files"]
+    v1 += [{**v1[0], "path": "v1/QV.f32", "name": "QV"}, {**v1[0], "path": "v1/Qv.f32", "name": "Qv"}]
+    ds = sdrbench.dataset("fake")
+    assert ds.field("QV").path == "v1/QV.f32" and ds.field("Qv").path == "v1/Qv.f32"
+    with pytest.raises(KeyError, match="ambiguous"):
+        ds.field("qv")

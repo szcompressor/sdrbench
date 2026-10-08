@@ -75,17 +75,12 @@ class Dataset:
     """
 
     def __init__(self, name: str, variant: str | None = None, cache=None):
-        if variant is None and "/" in name and name.split("/", 1)[0] in catalog()["datasets"]:
+        if variant is None and "/" in name:
             name, variant = name.split("/", 1)
-        try:
-            meta = catalog()["datasets"][name]
-        except KeyError:
-            raise KeyError(f"unknown dataset {name!r}; available: {', '.join(list())}") from None
+        name = _resolve(name, catalog()["datasets"], "dataset", key=_norm_dataset)
+        meta = catalog()["datasets"][name]
         variants = [*meta["variants"]]
-        if variant is None:
-            variant = variants[0]
-        if variant not in meta["variants"]:
-            raise KeyError(f"{name} has no variant {variant!r}; available: {', '.join(variants)}")
+        variant = variants[0] if variant is None else _resolve(variant, meta["variants"], f"{name} variant")
         self.name, self.variant, self.variants, self.cache = name, variant, variants, cache
         self.title = meta.get("title", name)
         self.description = meta.get("description", "")
@@ -107,11 +102,17 @@ class Dataset:
         return [*self._fields]
 
     def field(self, name: str) -> Field:
+        """Look up a field by name (case-insensitive if unambiguous), file name, or repo path."""
         if name in self._fields:
             return self._fields[name]
         for f in self.files:  # also accept the file name or repo path
             if name in (f.filename, f.path, f.path.split("/", 1)[-1]):
                 return f
+        hits = [f for n, f in self._fields.items() if n.lower() == name.lower()]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            raise KeyError(f"{name!r} is ambiguous in {self.name}/{self.variant}: {', '.join(f.name for f in hits)}")
         raise KeyError(f"{self.name}/{self.variant} has no field {name!r}; fields: {', '.join(self.fields)}")
 
     def __getitem__(self, name: str):
@@ -146,6 +147,20 @@ class Dataset:
         shapes = sorted({"x".join(map(str, f.shape)) for f in self._fields.values()})
         return (f"<sdrbench.Dataset {self.name}/{self.variant}: {len(self)} fields, "
                 f"{', '.join(shapes[:3])}{' ...' if len(shapes) > 3 else ''}, {self.nbytes / 1e9:.2f} GB>")
+
+
+def _norm_dataset(s: str) -> str:
+    return s.lower().replace("_", "-").replace(" ", "-")
+
+
+def _resolve(name: str, choices, what: str, key=str.lower) -> str:
+    """Exact match first, then a unique case-insensitive (or normalized) match."""
+    if name in choices:
+        return name
+    hits = [c for c in choices if key(c) == key(name)]
+    if len(hits) == 1:
+        return hits[0]
+    raise KeyError(f"unknown {what} {name!r}; available: {', '.join(choices)}")
 
 
 def dataset(name: str, variant: str | None = None, cache=None) -> Dataset:
