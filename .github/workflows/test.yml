@@ -38,6 +38,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[test]"
-      - name: End-to-end against Hugging Face and Globus
+      - run: pip install -e ".[test,sz3]"
+      - name: End-to-end against Hugging Face and Globus (incl. the dataset-card example with SZ3)
         run: pytest -v -m online

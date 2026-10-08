@@ -5,35 +5,54 @@ Python access to the [SDRBench](https://sdrbench.github.io/) scientific datasets
 Argonne.
 
 ```bash
-pip install sdrbench
+pip install sdrbench            # or "sdrbench[sz3]" to also get pysz (SZ3)
 ```
 
 ```python
 import sdrbench
 
-sdrbench.datasets()                     # ['basilisk-turbulence', 'cesm-atm', 'exaalt', ...]
-sdrbench.files("nyx")                   # FileInfo(path, bytes, sha256, dtype, shape) for every file
-x = sdrbench.load("nyx", "512x512x512/temperature.f32")   # numpy memmap, shape (512, 512, 512)
-p = sdrbench.download("hurricane-isabel", "100x500x500/Pf48.bin.f32")          # local path
-p = sdrbench.download("hurricane-isabel", "Pf48.bin.f32", source="globus")      # same bytes, from Globus
+sdrbench.list()                          # ['basilisk-turbulence', 'cesm-atm', 'exaalt', ...]
+nyx = sdrbench.dataset("nyx")            # default variant; sdrbench.dataset("nyx", "512x512x512_log")
+nyx.fields                               # ['baryon_density', 'dark_matter_density', 'temperature', ...]
+t = nyx["temperature"]                   # numpy memmap, float32, shape (512, 512, 512)
+for name, x in nyx.items(): ...          # downloads each field when reached
+sdrbench.load("cesm-atm", "CLDHGH")      # one-liner
+```
+
+Compress with SZ3 through [pysz](https://pypi.org/project/pysz/):
+
+```python
+import numpy as np
+from pysz import sz, szConfig, szErrorBoundMode
+
+x = sdrbench.dataset("scale-letkf")["T"]
+conf = szConfig()
+conf.errorBoundMode = szErrorBoundMode.REL
+conf.relErrorBound = 1e-3
+compressed, ratio = sz.compress(np.ascontiguousarray(x), conf)
+y, _ = sz.decompress(compressed, x.dtype.type, x.shape)
+print(ratio, sz.verify(np.asarray(x), y))  # ratio, (max error, PSNR, NRMSE)
 ```
 
 Command line:
 
 ```bash
 sdrbench list
-sdrbench files cesm-atm '*CLDHGH*'
-sdrbench download qmcpack --source globus
+sdrbench info hurricane-isabel/Pf
+sdrbench download nyx temperature
 ```
 
-- **Shapes are C order** (slowest dimension first), the same convention as the SZ3 test-suite
-  dataset table, so `np.fromfile(p, dtype).reshape(shape)` is always correct.
-- `source="hf"` downloads single files through `huggingface_hub` (cached in the usual HF cache).
-  `source="globus"` downloads the original SDRBench archive once, unpacks it to
-  `~/.cache/sdrbench/globus` (override with `cache=` or `SDRBENCH_CACHE`), and verifies the
-  file's sha256 against the catalog.
-- Files on Hugging Face are byte-for-byte the files inside the SDRBench archives; only a single
-  top-level folder inside each archive is dropped.
+- **Field names** are the physical variables (`CLDHGH`, `T`, `temperature`); dtype and shape come
+  from the catalog, not from the file name. The original SDRBench file name also works
+  (`ds["CLDHGH_1_1800_3600.f32"]`).
+- **Shapes are C order** (slowest dimension first), the convention of the SZ3 test-suite table, so
+  `np.fromfile(path, dtype).reshape(shape)` is always right.
+- **Downloads** come from Hugging Face and are cached; if that fails the package falls back to the
+  original SDRBench archive on Globus (verified by sha256). `field.download(source="globus")`
+  forces Globus.
+- Files on Hugging Face are byte-for-byte the files inside the SDRBench archives (a single top-level
+  folder inside an archive is dropped). Derived layouts such as QMCPACK `288x115x69x69`
+  (preconditioned) are computed on load and are not stored.
 
 ## Datasets
 
@@ -65,10 +84,11 @@ Globus remains the source of truth. `.github/workflows/release.yml` runs weekly:
 1. `sync/sync.py check` HEADs every archive linked from the SDRBench page and compares size,
    ETag and Last-Modified with `sync/state.json`; it also reports archives that appear on, or
    disappear from, the page.
-2. Changed archives are re-mirrored (`sync.py mirror`): download, unpack, sha256, upload to
-   `sdrbench/<dataset>` (files removed from an archive are removed from the repo too).
-   Archives too large for a GitHub runner fail the job; run the same command on a big machine:
-   `HF_TOKEN=... python sync/sync.py mirror --only <dataset>`.
+2. Changed datasets are re-mirrored in parallel jobs (`sync.py mirror`). Archives are streamed:
+   each file is unpacked, hashed and committed to `sdrbench/<dataset>` in batches and then
+   deleted, so a runner only needs room for the largest single file (~17 GB); the job frees disk
+   like the SZ3 CI. Files removed from an archive are removed from the repo too. The same command
+   works on any machine: `HF_TOKEN=... python sync/sync.py mirror --only <dataset>`.
 3. `sync.py catalog` regenerates `src/sdrbench/catalog.json`, `sync.py verify` checks dtypes and
    shapes against the data, `sync.py cards` refreshes the dataset cards, and a new patch version
    is tagged and published to PyPI.

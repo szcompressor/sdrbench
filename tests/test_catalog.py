@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "sync"))
 import sync  # noqa: E402
 
-ITEM = {"<f4": 4, "<f8": 8, "<i4": 4, "<i8": 8, "<u1": 1}
+ITEM = {"<f4": 4, "<f8": 8, "<i4": 4, "<i8": 8, "<u1": 1, "<u2": 2, "<u8": 8}
 import sdrbench  # noqa: E402
 
 CATALOG = sdrbench.catalog()  # the installed package's catalog (works for wheel tests too)
@@ -21,7 +21,7 @@ def all_files():
     for d, ds in CATALOG["datasets"].items():
         for v, vv in ds["variants"].items():
             for f in vv["files"]:
-                yield d, v, f
+                yield d, vv.get("archive_variant", v), f
 
 
 def test_catalog_not_empty():
@@ -40,7 +40,7 @@ def test_every_array_size_matches_shape():
 
 def test_paths_unique_and_repos_named():
     for d, ds in CATALOG["datasets"].items():
-        paths = [f["path"] for v in ds["variants"].values() for f in v["files"]]
+        paths = [f["path"] for v in ds["variants"].values() if "archive_variant" not in v for f in v["files"]]
         assert len(paths) == len(set(paths)), d
         assert ds["repo"] == f"sdrbench/{d}"
 
@@ -54,7 +54,7 @@ def test_catalog_is_reproducible_from_state():
 
 
 def test_no_excluded_dataset_is_mirrored():
-    mirrored = {vv["archive"] for ds in CFG["datasets"].values() for vv in ds["variants"].values()}
+    mirrored = {vv["archive"] for ds in CFG["datasets"].values() for vv in ds["variants"].values() if "archive" in vv}
     assert not mirrored & set(CFG["excluded"])
     assert "brown-samples" not in CATALOG["datasets"]
     assert not any("NSTX" in vv["archive"]["url"] for ds in CATALOG["datasets"].values() for vv in ds["variants"].values())
@@ -71,10 +71,10 @@ def entry(path, nbytes, rules=RULES, variant="v"):
 
 
 def test_rules_exact_and_1d():
-    assert entry("a.f32", 24) == ("<f4", [2, 3])
-    assert entry("sub/b.d64", 80) == ("<f8", [10])
-    assert entry("c.bp", 123) == (None, None)
-    assert entry("README.txt", 7) == (None, None)
+    assert entry("a.f32", 24) == ("<f4", [2, 3], "a")
+    assert entry("sub/b.d64", 80) == ("<f8", [10], "sub/b")
+    assert entry("c.bp", 123) == (None, None, None)
+    assert entry("README.txt", 7) == (None, None, None)
 
 
 def test_rules_reject_wrong_size_and_unknown_files():
@@ -87,7 +87,28 @@ def test_rules_reject_wrong_size_and_unknown_files():
 
 
 def test_rules_match_variant_with_slash():
-    assert entry("xx.f32", 24, variant="multi-timesteps/1840") == ("<f4", [2, 3])
+    assert entry("xx.f32", 24, variant="multi-timesteps/1840") == ("<f4", [2, 3], "xx")
+
+
+def test_field_names():
+    assert sync.field_name("CLDHGH_1_1800_3600.f32", None) == "CLDHGH"
+    assert sync.field_name("T-98x1200x1200.f32", None) == "T"
+    assert sync.field_name("Pf48.bin.f32", None) == "Pf48"
+    assert sync.field_name("einspline_115_69_69_288.f32", None) == "einspline"
+    assert sync.field_name("temperature.f32", None) == "temperature"
+    assert sync.field_name("sub/U-98x1200x1200.f32", None) == "sub/U"
+    rule = {"pattern": r"(dataset\d)-\d+x\d+\.(\w+)\.f32\.dat", "name": "{0}.{1}"}
+    assert sync.field_name("dataset1-5423x3137.x.f32.dat", rule) == "dataset1.x"
+    with pytest.raises(sync.CatalogError, match="name pattern"):
+        sync.field_name("other.f32", rule)
+
+
+def test_field_names_unique_in_catalog():
+    for d, ds in CATALOG["datasets"].items():
+        for v, vv in ds["variants"].items():
+            names = [f["name"] for f in vv["files"] if f["name"]]
+            assert len(names) == len(set(names)), (d, v)
+            assert all(f["name"] for f in vv["files"] if f["dtype"]), (d, v)
 
 
 def test_page_link_parsing():
@@ -105,3 +126,32 @@ def test_cards_render_for_every_dataset():
         assert d["title"] in card and "zhao2020sdrbench" in card
         if d.get("acknowledgment"):
             assert d["acknowledgment"] in card
+
+
+# --- streaming mirror (dry: no Hugging Face API) -----------------------------------
+def test_stream_mirror_layout_matches_fetch_archive(tmp_path):
+    from conftest import make_tar, make_zip
+    from sdrbench.archive import fetch_archive, sha256_file
+    members = {"a.f32": b"\x01" * 400, "d/b.d64": b"\x02" * 800}
+    for maker, name in ((make_tar, "x.tar.gz"), (make_zip, "x.zip")):
+        src = tmp_path / name
+        md5 = maker(src, members) if maker is make_tar else maker(src, {f"TOP/{k}": v for k, v in members.items()})
+        files, got_md5, n = sync.stream_mirror(None, "sdrbench/x", "var", src.as_uri(), tmp_path / "scratch")
+        assert got_md5 == md5 and n == src.stat().st_size
+        fetch_archive(src.as_uri(), tmp_path / "ref" / name)
+        ref = sorted((f"var/{p.relative_to(tmp_path / 'ref' / name).as_posix()}", p.stat().st_size, sha256_file(p))
+                     for p in (tmp_path / "ref" / name).rglob("*") if p.is_file())
+        assert sorted((f["path"], f["bytes"], f["sha256"]) for f in files) == ref
+        assert not (tmp_path / "scratch").exists()
+
+
+def test_stream_mirror_restarts_without_flattening(tmp_path):
+    import io
+    import tarfile
+    src = tmp_path / "multi.tar.gz"
+    with tarfile.open(src, "w:gz") as tf:
+        for name in ("A/one.f32", "B/two.f32"):
+            ti = tarfile.TarInfo(name); ti.size = 4
+            tf.addfile(ti, io.BytesIO(b"abcd"))
+    files, _, _ = sync.stream_mirror(None, "sdrbench/x", "v", src.as_uri(), tmp_path / "s")
+    assert sorted(f["path"] for f in files) == ["v/A/one.f32", "v/B/two.f32"]

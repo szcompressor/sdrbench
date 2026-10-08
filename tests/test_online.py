@@ -7,29 +7,41 @@ import pytest
 import sdrbench
 
 pytestmark = pytest.mark.online
-SMALL = ("exaalt", "2869440/xx.f32")  # 11 MB file from a 60 MB archive
 
 
 def test_hf_download_matches_catalog(tmp_path):
-    f = sdrbench.files(*SMALL)[0]
-    p = sdrbench.download(*SMALL, cache=tmp_path)
+    f = sdrbench.dataset("exaalt").field("xx")  # 11 MB file from a 60 MB archive
+    p = f.download(tmp_path, source="hf")
     assert hashlib.sha256(p.read_bytes()).hexdigest() == f.sha256
 
 
-def test_load_shape_and_dtype(tmp_path):
-    x = sdrbench.load(*SMALL, cache=tmp_path)
-    assert x.shape == (2869440,) and x.dtype == np.dtype("<f4")
-    assert np.isfinite(x).all()
+def test_default_api(tmp_path):
+    ds = sdrbench.dataset("exaalt", cache=tmp_path)
+    assert ds.variant == "2869440" and set(ds.fields) == {"xx", "yy", "zz", "vx", "vy", "vz"}
+    x = ds["xx"]
+    assert x.shape == (2869440,) and x.dtype == np.dtype("<f4") and np.isfinite(x).all()
 
 
 def test_globus_and_hf_give_identical_bytes(tmp_path):
-    a = sdrbench.download(*SMALL, source="hf", cache=tmp_path)
-    b = sdrbench.download(*SMALL, source="globus", cache=tmp_path)
-    assert a.read_bytes() == b.read_bytes()
+    f = sdrbench.dataset("exaalt").field("vx")
+    assert f.download(tmp_path, source="hf").read_bytes() == f.download(tmp_path, source="globus").read_bytes()
 
 
-def test_multidimensional_load(tmp_path):
-    x = sdrbench.load("exaalt", "copper/dataset1-5423x3137.x.f32.dat", cache=tmp_path)
+def test_multidimensional_c_order(tmp_path):
+    x = sdrbench.load("exaalt", "dataset1.x", variant="copper", cache=tmp_path)
     assert x.shape == (5423, 3137)
-    # positions move little between consecutive time steps (rows) -> confirms C order
+    # atoms move little between consecutive time steps (axis 0) -> C order, time slowest
     assert np.abs(np.diff(x[:50], axis=0)).mean() < np.abs(np.diff(x[:50], axis=1)).mean()
+
+
+def test_card_example_runs(tmp_path, monkeypatch, capsys):
+    """The usage example on the Hugging Face dataset card works as written."""
+    pytest.importorskip("pysz")
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sync"))
+    import sync
+    monkeypatch.setenv("SDRBENCH_CACHE", str(tmp_path))
+    d = sdrbench.catalog()["datasets"]["exaalt"]
+    exec(compile(sync.card_python("exaalt", d), "card", "exec"), {})
+    assert "ratio" in capsys.readouterr().out

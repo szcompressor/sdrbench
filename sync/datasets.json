@@ -41,7 +41,18 @@
      ]
     },
     "26x1800x3600": {
-     "archive": "CESM-ATM/SDRBENCH-CESM-ATM-26x1800x3600.tar.gz"
+     "archive": "CESM-ATM/SDRBENCH-CESM-ATM-26x1800x3600.tar.gz",
+     "rules": [
+      {
+       "glob": "*_1_26_1800_3600.f32",
+       "dtype": "<f4",
+       "shape": [
+        26,
+        1800,
+        3600
+       ]
+      }
+     ]
     }
    }
   },
@@ -72,7 +83,9 @@
        "shape": [
         5423,
         3137
-       ]
+       ],
+       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "name": "{0}.{1}"
       },
       {
        "glob": "dataset2-83x1077290.*.f32.dat",
@@ -80,7 +93,9 @@
        "shape": [
         83,
         1077290
-       ]
+       ],
+       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "name": "{0}.{1}"
       }
      ]
     },
@@ -93,7 +108,9 @@
        "shape": [
         7852,
         1037
-       ]
+       ],
+       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "name": "{0}.{1}"
       },
       {
        "glob": "dataset2-2338x106711.*.f32.dat",
@@ -101,7 +118,9 @@
        "shape": [
         2338,
         106711
-       ]
+       ],
+       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "name": "{0}.{1}"
       }
      ]
     }
@@ -115,61 +134,294 @@
    "globus_dir": "Hurricane-ISABEL",
    "variants": {
     "100x500x500": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz",
+     "rules": [
+      {
+       "glob": "*.log10.bin.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.log10\\.bin\\.f32",
+       "name": "{0}.log10"
+      },
+      {
+       "glob": "*.bin.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "CLOUDf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUDf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUDf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "PRECIPf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-PRECIPf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-PRECIPf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "Pf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Pf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Pf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "QCLOUDf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ],
+     "note": "This SDRBench archive also contains the QGRAUPf01-48 fields (there is no separate QGRAUPf archive)."
     },
     "QICEf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICEf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICEf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "QRAINf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAINf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAINf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "QSNOWf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOWf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOWf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "QVAPORf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QVAPORf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QVAPORf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "TCf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-TCf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-TCf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "Uf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Uf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Uf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "Vf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Vf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Vf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "Wf": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Wf.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Wf.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ]
+      }
+     ]
     },
     "CLOUD_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUD_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUD_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     },
     "QCLOUD_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUD_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUD_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     },
     "QGRAUP_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QGRAUP_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QGRAUP_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     },
     "QICE_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICE_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICE_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     },
     "QRAIN_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAIN_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAIN_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     },
     "QSNOW_log10": {
-     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOW_log10.tar.gz"
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOW_log10.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bin.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
+       "name": "{0}.log10"
+      }
+     ]
     }
    }
   },
@@ -180,46 +432,204 @@
    "globus_dir": "EXAFEL",
    "variants": {
     "10x32x185x388": {
-     "archive": "EXAFEL/SDRBENCH-EXAFEL-10x32x185x388.tar.gz"
+     "archive": "EXAFEL/SDRBENCH-EXAFEL-10x32x185x388.tar.gz",
+     "rules": [
+      {
+       "glob": "smd-*.u16",
+       "dtype": "<u2",
+       "shape": [
+        10,
+        32,
+        185,
+        388
+       ],
+       "pattern": "smd-cxif\\d+-r\\d+-(.+)\\.u16",
+       "name": "{0}"
+      }
+     ]
     },
     "130x1480x1552": {
-     "archive": "EXAFEL/SDRBENCH-EXAFEL-130x1480x1552.tar.gz"
+     "archive": "EXAFEL/SDRBENCH-EXAFEL-130x1480x1552.tar.gz",
+     "rules": [
+      {
+       "glob": "SDRBENCH-EXAFEL-data-130x1480x1552.f32",
+       "dtype": "<f4",
+       "shape": [
+        130,
+        1480,
+        1552
+       ],
+       "pattern": "SDRBENCH-EXAFEL-(data)-.*",
+       "name": "{0}"
+      },
+      {
+       "glob": "SDRBENCH-EXAFEL-nPeaks.i64",
+       "dtype": "<i8",
+       "shape": [
+        130
+       ],
+       "pattern": "SDRBENCH-EXAFEL-(nPeaks)\\.i64",
+       "name": "{0}"
+      },
+      {
+       "glob": "SDRBENCH-EXAFEL-peak*PosRaw-130x2048.d64",
+       "dtype": "<f8",
+       "shape": [
+        130,
+        2048
+       ],
+       "pattern": "SDRBENCH-EXAFEL-(peak[XY]PosRaw)-130x2048\\.d64",
+       "name": "{0}"
+      }
+     ]
     },
     "986x32x185x388": {
-     "archive": "EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz"
+     "archive": "EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
+     "rules": [
+      {
+       "glob": "EXAFEL-LCLS-986x32x185x388.f32",
+       "dtype": "<f4",
+       "shape": [
+        986,
+        32,
+        185,
+        388
+       ],
+       "pattern": "EXAFEL-LCLS-.*",
+       "name": "data"
+      }
+     ]
     }
    }
   },
   "hacc": {
    "title": "HACC",
-   "description": "Cosmology particle simulation (Hardware/Hybrid Accelerated Cosmology Code). Six particle fields (x, y, z, vx, vy, vz) stored separately as 1D arrays; single precision, little-endian. multi-timesteps/<step> holds several time steps of one region.",
+   "description": "Cosmology particle simulation (Hardware/Hybrid Accelerated Cosmology Code). Particle fields (x, y, z, vx, vy, vz) stored separately as 1D arrays; single precision, little-endian. Variants: medium/big snapshots, sbig = one region of time step 499 at full scale (coordinates only), multi-timesteps/<region> = one region over many time steps.",
    "source": "HACC team (ECP ExaSky); https://www.alcf.anl.gov/science/case-studies/opencosmo-community-portal-cosmological-simulations",
    "citation_extra": "Please cite Heitmann et al., Astrophys. J. Suppl. 252 (2021) 2, 19 (https://inspirehep.net/literature/1799008) when using HACC data.",
    "globus_dir": "EXASKY/HACC",
    "variants": {
     "medium": {
-     "archive": "EXASKY/HACC/EXASKY-HACC-data-medium-size.tar.gz"
+     "archive": "EXASKY/HACC/EXASKY-HACC-data-medium-size.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": "1d"
+      }
+     ]
     },
     "sbig": {
-     "archive": "EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz"
+     "archive": "EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "\\d+-(\\w+)\\.f32",
+       "name": "{0}"
+      }
+     ]
     },
     "big": {
-     "archive": "EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz"
+     "archive": "EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": "1d"
+      }
+     ]
     },
     "multi-timesteps/1840": {
-     "archive": "EXASKY/HACC/multi-timesteps/1840.tar.gz"
+     "archive": "EXASKY/HACC/multi-timesteps/1840.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\d+)-(\\w+)\\.f32",
+       "name": "{0}/{1}"
+      },
+      {
+       "glob": "ID.u64",
+       "dtype": "<u8",
+       "shape": "1d"
+      }
+     ],
+     "note": "One region (1840) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
     },
     "multi-timesteps/20000": {
-     "archive": "EXASKY/HACC/multi-timesteps/20000.tar.gz"
+     "archive": "EXASKY/HACC/multi-timesteps/20000.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\d+)-(\\w+)\\.f32",
+       "name": "{0}/{1}"
+      },
+      {
+       "glob": "ID.u64",
+       "dtype": "<u8",
+       "shape": "1d"
+      }
+     ],
+     "note": "One region (20000) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
     },
     "multi-timesteps/24120": {
-     "archive": "EXASKY/HACC/multi-timesteps/24120.tar.gz"
+     "archive": "EXASKY/HACC/multi-timesteps/24120.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\d+)-(\\w+)\\.f32",
+       "name": "{0}/{1}"
+      },
+      {
+       "glob": "ID.u64",
+       "dtype": "<u8",
+       "shape": "1d"
+      }
+     ],
+     "note": "One region (24120) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
     },
     "multi-timesteps/30210": {
-     "archive": "EXASKY/HACC/multi-timesteps/30210.tar.gz"
+     "archive": "EXASKY/HACC/multi-timesteps/30210.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\d+)-(\\w+)\\.f32",
+       "name": "{0}/{1}"
+      },
+      {
+       "glob": "ID.u64",
+       "dtype": "<u8",
+       "shape": "1d"
+      }
+     ],
+     "note": "One region (30210) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
     },
     "multi-timesteps/4529": {
-     "archive": "EXASKY/HACC/multi-timesteps/4529.tar.gz"
+     "archive": "EXASKY/HACC/multi-timesteps/4529.tar.gz",
+     "rules": [
+      {
+       "glob": "*-*.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\d+)-(\\w+)\\.f32",
+       "name": "{0}/{1}"
+      },
+      {
+       "glob": "ID.u64",
+       "dtype": "<u8",
+       "shape": "1d"
+      }
+     ],
+     "note": "One region (4529) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
     }
    }
   },
@@ -230,10 +640,32 @@
    "globus_dir": "EXASKY/NYX",
    "variants": {
     "512x512x512": {
-     "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512.tar.gz"
+     "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        512,
+        512,
+        512
+       ]
+      }
+     ]
     },
     "512x512x512_log": {
-     "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512_log.tar.gz"
+     "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512_log.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": [
+        512,
+        512,
+        512
+       ]
+      }
+     ]
     }
    }
   },
@@ -244,7 +676,28 @@
    "globus_dir": "NWChem",
    "variants": {
     "nwchem": {
-     "archive": "NWChem/SDRBENCH-NWChem-dataset.tar.gz"
+     "archive": "NWChem/SDRBENCH-NWChem-dataset.tar.gz",
+     "rules": [
+      {
+       "glob": "*-tst.bin.d64",
+       "dtype": "<f8",
+       "shape": "1d",
+       "pattern": "(\\w+)-tst\\.bin\\.d64",
+       "name": "{0}"
+      },
+      {
+       "glob": "*-tst.bin.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\w+)-tst\\.bin\\.f32",
+       "name": "{0}.f32"
+      },
+      {
+       "glob": "*.cpp",
+       "dtype": null,
+       "shape": null
+      }
+     ]
     }
    }
   },
@@ -255,16 +708,49 @@
    "globus_dir": "SCALE_LETKF",
    "variants": {
     "98x1200x1200": {
-     "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200.tar.gz"
+     "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200.tar.gz",
+     "rules": [
+      {
+       "glob": "*-98x1200x1200.f32",
+       "dtype": "<f4",
+       "shape": [
+        98,
+        1200,
+        1200
+       ]
+      }
+     ]
     },
     "98x1200x1200_log": {
-     "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200_log.tar.gz"
+     "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200_log.tar.gz",
+     "rules": [
+      {
+       "glob": "*-98x1200x1200.log10.f32",
+       "dtype": "<f4",
+       "shape": [
+        98,
+        1200,
+        1200
+       ],
+       "pattern": "(\\w+)-98x1200x1200\\.log10\\.f32",
+       "name": "{0}.log10"
+      },
+      {
+       "glob": "*-98x1200x1200.f32",
+       "dtype": "<f4",
+       "shape": [
+        98,
+        1200,
+        1200
+       ]
+      }
+     ]
     }
    }
   },
   "qmcpack": {
    "title": "QMCPACK",
-   "description": "Many-body ab initio Quantum Monte Carlo (electronic structure of atoms, molecules and solids). 1 field, 288 orbitals of 115x69x69, single precision, little-endian.",
+   "description": "Many-body ab initio Quantum Monte Carlo (electronic structure of atoms, molecules and solids): einspline orbitals, single precision, little-endian. The archive holds the original layout (115, 69, 69, 288) with the orbital index fastest; variant 288x115x69x69 gives the preconditioned layout (288 orbitals x 115 x 69 x 69).",
    "source": "QMCPACK performance test; contact Ye Luo (yeluo@anl.gov)",
    "globus_dir": "QMCPACK",
    "variants": {
@@ -282,6 +768,16 @@
        ]
       }
      ]
+    },
+    "288x115x69x69": {
+     "view_of": "115x69x69x288",
+     "transpose": [
+      3,
+      0,
+      1,
+      2
+     ],
+     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file."
     }
    }
   },
@@ -292,7 +788,18 @@
    "globus_dir": "Miranda",
    "variants": {
     "256x384x384": {
-     "archive": "Miranda/SDRBENCH-Miranda-256x384x384.tar.gz"
+     "archive": "Miranda/SDRBENCH-Miranda-256x384x384.tar.gz",
+     "rules": [
+      {
+       "glob": "*.d64",
+       "dtype": "<f8",
+       "shape": [
+        256,
+        384,
+        384
+       ]
+      }
+     ]
     },
     "3072x3072x3072": {
      "archive": "Miranda/SDRBENCH-Miranda-3072x3072x3072.tar.gz"
@@ -341,42 +848,61 @@
      "archive": "XGC/xgc.zip",
      "rules": [
       {
-       "glob": "*_20694x512_double",
+       "glob": "xgc.3d.*_20694x512_double",
        "dtype": "<f8",
        "shape": [
         20694,
         512
-       ]
+       ],
+       "pattern": "xgc\\.3d\\.(\\d+)\\.bp_(.+?)_[\\dx]+_double",
+       "name": "{0}/{1}"
       },
       {
-       "glob": "*_20694_double",
+       "glob": "xgc.3d.*_20694_double",
        "dtype": "<f8",
        "shape": [
         20694
-       ]
+       ],
+       "pattern": "xgc\\.3d\\.(\\d+)\\.bp_(.+?)_[\\dx]+_double",
+       "name": "{0}/{1}"
       },
       {
-       "glob": "*_41087x3_int32_t",
-       "dtype": "<i4",
-       "shape": [
-        41087,
-        3
-       ]
-      },
-      {
-       "glob": "*_20694_int32_t",
-       "dtype": "<i4",
-       "shape": [
-        20694
-       ]
-      },
-      {
-       "glob": "*_20694x2_double",
+       "glob": "xgc.mesh.*_20694x2_double",
        "dtype": "<f8",
        "shape": [
         20694,
         2
-       ]
+       ],
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
+       "name": "mesh/{0}"
+      },
+      {
+       "glob": "xgc.mesh.*_20694_double",
+       "dtype": "<f8",
+       "shape": [
+        20694
+       ],
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
+       "name": "mesh/{0}"
+      },
+      {
+       "glob": "xgc.mesh.*_41087x3_int32_t",
+       "dtype": "<i4",
+       "shape": [
+        41087,
+        3
+       ],
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
+       "name": "mesh/{0}"
+      },
+      {
+       "glob": "xgc.mesh.*_20694_int32_t",
+       "dtype": "<i4",
+       "shape": [
+        20694
+       ],
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
+       "name": "mesh/{0}"
       }
      ]
     }

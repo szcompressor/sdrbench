@@ -42,10 +42,20 @@ def fake_dataset(tmp_path, monkeypatch):
         "variants": {"v1": {
             "archive": {"url": tgz.as_uri(), "bytes": tgz.stat().st_size, "md5": md5},
             "files": [
-                {"path": "v1/a.f32", "bytes": a.nbytes, "sha256": sha["a.f32"], "dtype": "<f4", "shape": [2, 3, 4]},
-                {"path": "v1/sub/b.d64", "bytes": b.nbytes, "sha256": sha["sub/b.d64"], "dtype": "<f8", "shape": [10]},
-                {"path": "v1/notes.txt", "bytes": 5, "sha256": sha["notes.txt"], "dtype": None, "shape": None},
-            ]}}}}}
+                {"path": "v1/a.f32", "name": "a", "bytes": a.nbytes, "sha256": sha["a.f32"], "dtype": "<f4", "shape": [2, 3, 4]},
+                {"path": "v1/sub/b.d64", "name": "sub/b", "bytes": b.nbytes, "sha256": sha["sub/b.d64"], "dtype": "<f8", "shape": [10]},
+                {"path": "v1/notes.txt", "name": None, "bytes": 5, "sha256": sha["notes.txt"], "dtype": None, "shape": None},
+            ]},
+            "v2": {  # names come from the catalog
+                "archive": {"url": "file:///unused.tar.gz", "bytes": 0, "md5": None},
+                "files": [
+                    {"path": "v2/a.f32", "name": "a32", "bytes": 4, "sha256": "0" * 64, "dtype": "<f4", "shape": [1]},
+                    {"path": "v2/a.d64", "name": "a64", "bytes": 8, "sha256": "0" * 64, "dtype": "<f8", "shape": [1]},
+                ]},
+            "v1t": {  # derived layout of v1/a.f32: transpose (2, 0, 1)
+                "archive": {"url": tgz.as_uri(), "bytes": tgz.stat().st_size, "md5": md5}, "archive_variant": "v1",
+                "files": [{"path": "v1/a.f32", "name": "a", "bytes": a.nbytes, "sha256": sha["a.f32"],
+                           "dtype": "<f4", "shape": [4, 2, 3], "transpose": [2, 0, 1]}]}}}}}
     monkeypatch.setattr(core, "catalog", lambda: cat)
 
     # stand-in for huggingface_hub.hf_hub_download: serve the same bytes from a local folder

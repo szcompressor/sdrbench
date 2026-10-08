@@ -4,43 +4,48 @@ import sys
 from . import core
 
 
-def _size(n: int) -> str:
+def _size(n: float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1000 or unit == "TB":
-            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1000
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="sdrbench", description="SDRBench datasets on Hugging Face / Globus")
+    p = argparse.ArgumentParser(prog="sdrbench", description="SDRBench scientific datasets")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("list", help="list datasets")
-    pf = sub.add_parser("files", help="list files of a dataset")
-    pf.add_argument("dataset")
-    pf.add_argument("pattern", nargs="?", default="*")
-    pd = sub.add_parser("download", help="download files matching a pattern")
+    sub.add_parser("list", help="list datasets and their variants")
+    pi = sub.add_parser("info", help="fields of a dataset (NAME or NAME/VARIANT)")
+    pi.add_argument("dataset")
+    pd = sub.add_parser("download", help="download a dataset variant, or some of its fields")
     pd.add_argument("dataset")
-    pd.add_argument("pattern", nargs="?", default="*")
-    pd.add_argument("--source", choices=core.SOURCES, default="hf")
-    pd.add_argument("--cache", default=None, help="cache directory (default ~/.cache/sdrbench)")
+    pd.add_argument("fields", nargs="*", help="field names (default: all files)")
+    pd.add_argument("--cache", default=None, help="cache directory (default: HF cache / ~/.cache/sdrbench)")
     a = p.parse_args(argv)
 
-    if a.cmd == "list":
-        for name in core.datasets():
-            d = core.info(name)
-            total = sum(f["bytes"] for v in d["variants"].values() for f in v["files"])
-            print(f"{name:22s} {_size(total):>9s}  {d['title']}")
-    elif a.cmd == "files":
-        for f in core.files(a.dataset, a.pattern):
-            shape = "x".join(map(str, f.shape)) if f.shape else ""
-            print(f"{f.path:60s} {_size(f.bytes):>9s}  {f.dtype or '':4s} {shape}")
-    elif a.cmd == "download":
-        matched = core.files(a.dataset, a.pattern)
-        if not matched:
-            print("no files match", file=sys.stderr)
-            return 1
-        for f in matched:
-            print(core.download(a.dataset, f.path, source=a.source, cache=a.cache))
+    try:
+        if a.cmd == "list":
+            for name in core.list():
+                d = core.dataset(name)
+                print(f"{name:22s} {d.title}")
+                for v in d.variants:
+                    dv = core.dataset(name, v)
+                    print(f"    {name}/{v:30s} {len(dv):4d} fields {_size(dv.nbytes):>10s}")
+        elif a.cmd == "info":
+            d = core.dataset(a.dataset)
+            print(d.title, "-", d.description)
+            print("source:", d.source_info)
+            for f in d.files:
+                shape = "x".join(map(str, f.shape)) if f.shape else ""
+                print(f"  {f.name:40s} {f.dtype or '':4s} {shape:20s} {_size(f.nbytes):>10s}")
+        elif a.cmd == "download":
+            d = core.dataset(a.dataset, cache=a.cache)
+            targets = [d.field(n) for n in a.fields] if a.fields else d.files
+            for f in targets:
+                print(f.download(a.cache))
+    except KeyError as e:
+        print(e.args[0], file=sys.stderr)
+        return 1
     return 0
 
 

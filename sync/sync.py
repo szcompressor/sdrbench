@@ -61,7 +61,8 @@ def archives(c):
     """(dataset, variant, archive_rel) for every mirrored archive."""
     for d, ds in c["datasets"].items():
         for v, vv in ds["variants"].items():
-            yield d, v, vv["archive"]
+            if "archive" in vv:  # derived views have no archive of their own
+                yield d, v, vv["archive"]
 
 
 def http_head(url):
@@ -148,12 +149,119 @@ def mirror_metadata(api, c, dataset, work, dry):
     return len(mine)
 
 
+class _Restart(Exception):
+    pass
+
+
+def _members(url, scratch):
+    """Yield (name, local_tmp_path) for every regular file of a .tar.gz/.zip, one at a time,
+    so disk usage stays at one file (zip archives must be stored whole first).
+    Also returns md5/size of the archive through the generator's StopIteration value."""
+    import tarfile
+    import zipfile
+    from sdrbench.archive import _HashingReader, _is_junk, _open_url, CHUNK
+    scratch.mkdir(parents=True, exist_ok=True)
+    with _open_url(url) as resp:
+        reader = _HashingReader(resp)
+        if url.endswith(".zip"):
+            zpath = scratch / "_archive.zip"
+            with open(zpath, "wb") as out:
+                shutil.copyfileobj(reader, out, CHUNK)
+            with zipfile.ZipFile(zpath) as zf:
+                for info in zf.infolist():
+                    if info.is_dir() or _is_junk(info.filename):
+                        continue
+                    tmp = scratch / f"m{time.time_ns()}"
+                    with zf.open(info) as src, open(tmp, "wb") as out:
+                        shutil.copyfileobj(src, out, CHUNK)
+                    yield info.filename, tmp
+            zpath.unlink()
+        else:
+            with tarfile.open(fileobj=reader, mode="r|*") as tf:
+                for m in tf:
+                    if not m.isfile() or _is_junk(m.name):
+                        continue
+                    tmp = scratch / f"m{time.time_ns()}"
+                    with open(tmp, "wb") as out:
+                        shutil.copyfileobj(tf.extractfile(m), out, CHUNK)
+                    yield m.name, tmp
+            reader.drain()
+    return reader.md5.hexdigest(), reader.nbytes
+
+
+def _commit(api, repo, ops, message):
+    for attempt in range(5):
+        try:
+            api.create_commit(repo_id=repo, repo_type="dataset", operations=ops, commit_message=message)
+            return
+        except Exception as e:  # network hiccups on multi-GB uploads
+            log(f"   commit attempt {attempt + 1} failed: {e}")
+            time.sleep(30 * (attempt + 1))
+    raise RuntimeError(f"commit to {repo} failed")
+
+
+def stream_mirror(api, repo, variant, url, scratch, batch_bytes=8e9, flatten=True):
+    """Mirror one archive into <repo>/<variant>/ without unpacking it all: each member is
+    written to a temp file, hashed, and committed in batches, then deleted. Files that are no
+    longer in the archive are removed from the repo. Returns (files, md5, archive bytes).
+
+    Like sdrbench.archive.fetch_archive, a single top-level directory is dropped. That is
+    only known at the end, so we assume it from the first member and restart without
+    flattening in the (never yet seen) case that a later member breaks the assumption."""
+    from huggingface_hub import CommitOperationAdd, CommitOperationDelete
+    top, files, batch, nbatch = None, [], [], 0
+    gen = _members(url, scratch)
+    try:
+        while True:
+            try:
+                name, tmp = next(gen)
+            except StopIteration as stop:
+                md5, nbytes = stop.value
+                break
+            parts = Path(name).parts
+            if flatten and top is None:
+                top = parts[0] if len(parts) > 1 else ""
+            if flatten and top and (len(parts) < 2 or parts[0] != top):
+                raise _Restart()
+            rel = "/".join(parts[1:] if flatten and top else parts)
+            size = tmp.stat().st_size
+            files.append({"path": f"{variant}/{rel}", "bytes": size, "sha256": sha256_file(tmp)})
+            batch.append((f"{variant}/{rel}", tmp))
+            nbatch += size
+            if api and (nbatch >= batch_bytes or len(batch) >= 50):
+                _commit(api, repo, [CommitOperationAdd(p, str(t)) for p, t in batch],
+                        f"Sync {variant} from SDRBench ({len(files)} files so far)")
+            if not api or nbatch >= batch_bytes or len(batch) >= 50:
+                for _, t in batch:
+                    t.unlink()
+                batch, nbatch = [], 0
+    except _Restart:
+        gen.close()
+        shutil.rmtree(scratch, ignore_errors=True)
+        log("   archive has several top-level entries; restarting without flattening")
+        return stream_mirror(api, repo, variant, url, scratch, batch_bytes, flatten=False)
+    if api:
+        new = {f["path"] for f in files}
+        old = [p for p in api.list_repo_files(repo, repo_type="dataset") if p.startswith(variant + "/")]
+        ops = [CommitOperationAdd(p, str(t)) for p, t in batch]
+        ops += [CommitOperationDelete(p) for p in old if p not in new]
+        if ops:
+            _commit(api, repo, ops, f"Sync {variant} from SDRBench ({len(files)} files)")
+    for _, t in batch:
+        t.unlink(missing_ok=True)
+    shutil.rmtree(scratch, ignore_errors=True)
+    return files, md5, nbytes
+
+
 def cmd_mirror(a):
-    c, state = cfg(), load_json(STATE, {})
+    c = cfg()
+    state_path = Path(a.state_out) if a.state_out else STATE
+    state = load_json(STATE, {})
+    out_state = {} if a.state_out else state
     base = c["globus_base"]
     todo = list(archives(c))
     if a.changed:
-        rep = load_json(a.changed) if isinstance(a.changed, str) and Path(a.changed).exists() else None
+        rep = load_json(a.changed)
         if rep is None:
             print("--changed needs the JSON written by `check --output`", file=sys.stderr)
             return 2
@@ -175,36 +283,22 @@ def cmd_mirror(a):
             log(f"skip {rel}: HTTP {head.get('status')}")
             skipped.append(rel)
             continue
-        need = head["bytes"] * 1.6  # extracted data barely compresses
-        free = shutil.disk_usage(work).free
-        if a.max_gb and head["bytes"] > a.max_gb * 1e9 or need > free:
-            log(f"skip {rel}: {head['bytes']/1e9:.1f}GB archive, {free/1e9:.0f}GB free -> run on a bigger machine")
-            skipped.append(rel)
-            continue
-        if not a.dry and dataset not in done_ds:
+        if api and dataset not in done_ds:
             api.create_repo(f"{ORG}/{dataset}", repo_type="dataset", exist_ok=True)
-        dest = work / dataset / variant
-        log(f"== {dataset}/{variant} <- {url}")
-        md5, n = fetch_archive(url, dest)
-        files = []
-        for p in sorted(dest.rglob("*")):
-            if p.is_file():
-                files.append({"path": str(p.relative_to(work / dataset)), "bytes": p.stat().st_size,
-                              "sha256": sha256_file(p)})
-        log(f"   {n/1e9:.2f}GB archive, {len(files)} files, md5 {md5}")
-        if not a.dry:
-            upload_dir(api, f"{ORG}/{dataset}", dest, variant, f"Sync {variant} from SDRBench ({rel})")
-        state[rel] = {"dataset": dataset, "variant": variant, "url": url, "bytes": n, "md5": md5,
-                      "etag": head.get("etag"), "last_modified": head.get("last_modified"),
-                      "files": files, "synced": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        save_json(work / "state.dry.json" if a.dry else STATE, state)
-        shutil.rmtree(dest)
+        log(f"== {dataset}/{variant} <- {url} ({head['bytes']/1e9:.2f}GB, {shutil.disk_usage(work).free/1e9:.0f}GB free)")
+        t0 = time.time()
+        files, md5, n = stream_mirror(api, f"{ORG}/{dataset}", variant, url, work / "scratch")
+        log(f"   {len(files)} files, archive md5 {md5}, {time.time() - t0:.0f}s")
+        out_state[rel] = {"dataset": dataset, "variant": variant, "url": url, "bytes": n, "md5": md5,
+                          "etag": head.get("etag"), "last_modified": head.get("last_modified"),
+                          "files": files, "synced": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        save_json(state_path if a.state_out else (work / "state.dry.json" if a.dry else STATE), out_state)
         if dataset not in done_ds:
             mirror_metadata(api, c, dataset, work, a.dry)
             done_ds.add(dataset)
     if not a.workdir:
         shutil.rmtree(work, ignore_errors=True)
-    if not a.dry:
+    if not a.dry and not a.state_out:
         cmd_catalog(a)
     if skipped:
         log("NOT mirrored (needs attention):", *skipped)
@@ -212,8 +306,31 @@ def cmd_mirror(a):
     return 0
 
 
+def cmd_merge(a):
+    """Merge state fragments written by parallel `mirror --state-out` jobs into state.json."""
+    state = load_json(STATE, {})
+    for p in a.fragments:
+        state.update(load_json(p, {}))
+    save_json(STATE, state)
+    log(f"state.json: {len(state)} archives after merging {len(a.fragments)} fragments")
+    return 0
+
+
+def cmd_plan(a):
+    """Datasets to mirror (JSON list for a CI matrix) from `check --output`."""
+    rep = load_json(a.check, {"changed": []})
+    by_arch = {rel: d for d, _, rel in archives(cfg())}
+    ds = sorted({by_arch[x["archive"]] for x in rep["changed"] if x["archive"] in by_arch} | set(a.extra or []))
+    print(json.dumps(ds))
+    gh = os.environ.get("GITHUB_OUTPUT")
+    if gh:
+        with open(gh, "a") as f:
+            f.write(f"datasets={json.dumps(ds)}\n")
+    return 0
+
+
 # ---------------------------------------------------------------- catalog
-ITEMSIZE = {"<f4": 4, "<f8": 8, "<i4": 4, "<i8": 8, "<u1": 1}
+ITEMSIZE = {"<f4": 4, "<f8": 8, "<i4": 4, "<i8": 8, "<u1": 1, "<u2": 2, "<u8": 8}
 
 
 class CatalogError(ValueError):
@@ -230,17 +347,41 @@ def match_rule(path, rules):
     return None
 
 
+DTYPE_SUFFIXES = (".bin.f32", ".pre.f32.dat", ".f32.dat", ".bin.d64", ".f32", ".f64", ".d64", ".u16", ".u64", ".i64", ".dat", ".bin",
+                  ".raw", "_double", "_float", "_int32_t", "_int64_t")
+TRAILING_DIMS = re.compile(r"[_-]\d+(?:[x_]\d+)+$")  # _1_1800_3600, -98x1200x1200, _115_69_69_288
+
+
+def field_name(rel, rule):
+    """Short field name: the physical variable, without dtype/dimension decorations.
+    A rule may give 'pattern' (regex on the path inside the variant) and 'name' (str.format
+    template over the groups); otherwise suffixes and trailing dimensions are stripped."""
+    if rule and rule.get("pattern"):
+        m = re.fullmatch(rule["pattern"], rel)
+        if not m:
+            raise CatalogError(f"{rel}: does not match name pattern {rule['pattern']!r}")
+        return rule["name"].format(*m.groups(), **m.groupdict())
+    n = rel
+    for suf in DTYPE_SUFFIXES:
+        if n.endswith(suf) and len(n) > len(suf):
+            n = n[: -len(suf)]
+            break
+    head, _, tail = n.rpartition("/")
+    tail = TRAILING_DIMS.sub("", tail) or tail
+    return f"{head}/{tail}" if head else tail
+
+
 def file_entry(dataset, variant, f, rules):
-    """dtype/shape for one file from the variant's explicit rules; sizes must agree exactly."""
+    """(dtype, shape, name) for one file from the variant's explicit rules; sizes must agree exactly."""
     rel = f["path"][len(variant) + 1:] if f["path"].startswith(variant + "/") else f["path"]
     r = match_rule(rel, rules)
     name = f["path"].rsplit("/", 1)[-1]
     if r is None:
         if name.lower().endswith(NON_ARRAY):
-            return None, None
+            return None, None, None
         raise CatalogError(f"{dataset}/{f['path']}: no dtype/shape rule (add one to sync/datasets.json)")
     if r.get("dtype") is None:
-        return None, None
+        return None, None, None
     item = ITEMSIZE[r["dtype"]]
     shape = r["shape"]
     if shape == "1d":
@@ -249,7 +390,7 @@ def file_entry(dataset, variant, f, rules):
         shape = [f["bytes"] // item]
     if math.prod(shape) * item != f["bytes"]:
         raise CatalogError(f"{dataset}/{f['path']}: shape {shape} x {item}B != {f['bytes']} bytes")
-    return r["dtype"], list(shape)
+    return r["dtype"], list(shape), field_name(rel, r)
 
 
 def build_catalog(c, state, strict=True):
@@ -260,20 +401,35 @@ def build_catalog(c, state, strict=True):
         entry["repo"] = f"{ORG}/{d}"
         entry["variants"] = {}
         for v, vv in ds["variants"].items():
+            if "view_of" in vv:
+                continue  # added below, once the base variant exists
             st = state.get(vv["archive"])
             if not st:
                 continue
             fl = []
             for f in st["files"]:
                 try:
-                    dt, shape = file_entry(d, v, f, vv.get("rules", []))
+                    dt, shape, fname = file_entry(d, v, f, vv.get("rules", []))
                 except CatalogError as e:
                     errors.append(str(e))
-                    dt, shape = None, None
-                fl.append({"path": f["path"], "bytes": f["bytes"], "sha256": f["sha256"],
+                    dt, shape, fname = None, None, None
+                fl.append({"path": f["path"], "name": fname, "bytes": f["bytes"], "sha256": f["sha256"],
                            "dtype": dt, "shape": shape})
+            names = [x["name"] for x in fl if x["name"]]
+            dups = sorted({n for n in names if names.count(n) > 1})
+            if dups:
+                errors.append(f"{d}/{v}: duplicate field names {dups} (add a 'pattern'/'name' rule)")
             entry["variants"][v] = {"archive": {"url": st["url"], "bytes": st["bytes"], "md5": st["md5"]},
                                     "files": fl}
+        for v, vv in ds["variants"].items():
+            base = entry["variants"].get(vv.get("view_of"))
+            if "view_of" not in vv or base is None:
+                continue
+            axes = vv["transpose"]
+            entry["variants"][v] = {
+                "archive": base["archive"], "archive_variant": vv["view_of"], "note": vv.get("note"),
+                "files": [{**f, "shape": [f["shape"][i] for i in axes], "transpose": axes}
+                          for f in base["files"] if f["dtype"] and len(f["shape"]) == len(axes)]}
         if entry["variants"]:
             out["datasets"][d] = entry
     if errors and strict:
@@ -308,24 +464,85 @@ def human(n):
         n /= 1000
 
 
+def _example(name, d):
+    """(variant, field) used in the card examples: the smallest array of the default variant."""
+    v0 = next(iter(d["variants"]))
+    arrays = [f for f in d["variants"][v0]["files"] if f["dtype"] and len(f["shape"]) > 1] or \
+             [f for f in d["variants"][v0]["files"] if f["dtype"]]
+    return v0, (min(arrays, key=lambda f: f["bytes"]) if arrays else None)
+
+
+def card_python(name, d):
+    """The runnable usage example shown on the card (also executed by the online tests)."""
+    v0, f = _example(name, d)
+    if f is None:
+        return f'import sdrbench\nds = sdrbench.dataset("{name}")\npaths = ds.download()\n'
+    shape = tuple(f["shape"])
+    return f"""import numpy as np
+import sdrbench
+from pysz import sz, szConfig, szErrorBoundMode
+
+ds = sdrbench.dataset("{name}")         # default variant: {v0}
+print(ds.fields)
+x = ds["{f['name']}"]                     # numpy array, dtype {f['dtype']}, shape {shape}
+
+# compress with SZ3 (pysz) at a 1e-3 value-range-relative error bound
+conf = szConfig()
+conf.errorBoundMode = szErrorBoundMode.REL
+conf.relErrorBound = 1e-3
+compressed, ratio = sz.compress(np.ascontiguousarray(x), conf)
+y, _ = sz.decompress(compressed, x.dtype.type, x.shape)
+max_err, psnr, nrmse = sz.verify(np.asarray(x), y)
+print(f"ratio {{ratio:.1f}}x, PSNR {{psnr:.1f}} dB, max error {{max_err:.3g}}")
+"""
+
+
 def render_card(name, d):
-    total = sum(f["bytes"] for v in d["variants"].values() for f in v["files"])
-    rows = []
+    total = sum(f["bytes"] for v in d["variants"].values() if "archive_variant" not in v for f in v["files"])
+    sections = []
     for v, vv in d["variants"].items():
         arr = [f for f in vv["files"] if f["dtype"]]
-        shapes = sorted({"x".join(map(str, f["shape"])) for f in arr})
-        dts = sorted({f["dtype"] for f in arr})
-        rows.append(f"| `{v}/` | {len(vv['files'])} | {human(sum(f['bytes'] for f in vv['files']))} | "
-                    f"{', '.join(dts) or '-'} | {', '.join(shapes[:3]) + (' ...' if len(shapes) > 3 else '') or '-'} | "
-                    f"[archive]({vv['archive']['url']}) |")
+        other = [f for f in vv["files"] if not f["dtype"]]
+        head = f"### `{v}`" + (" (default)" if v == next(iter(d["variants"])) else "")
+        lines = [head, ""]
+        if vv.get("note"):
+            lines += [vv["note"], ""]
+        if "archive_variant" in vv:
+            lines += [f"Derived layout: no extra files; computed on load from `{vv['archive_variant']}/`.", ""]
+        else:
+            lines += [f"{len(vv['files'])} files, {human(sum(f['bytes'] for f in vv['files']))}, "
+                      f"from [{vv['archive']['url'].rsplit('/', 1)[-1]}]({vv['archive']['url']}).", ""]
+        if arr:
+            lines += ["| Field | dtype | Shape (C order) | File |", "|---|---|---|---|"]
+            shown = arr if len(arr) <= 30 else arr[:12]
+            lines += [f"| `{f['name']}` | `{f['dtype']}` | {' x '.join(map(str, f['shape']))} | `{f['path']}` |" for f in shown]
+            if len(arr) > len(shown):
+                lines += [f"| ... {len(arr) - len(shown)} more | | | |"]
+        if other:
+            lines += ["", "Other files: " + ", ".join(f"`{f['path']}`" for f in other[:10])
+                      + (" ..." if len(other) > 10 else "")]
+        sections.append("\n".join(lines))
     extra = ""
     if d.get("acknowledgment"):
         extra += f"\n**Acknowledgment requested by the data provider:** {d['acknowledgment']}\n"
     if d.get("citation_extra"):
         extra += f"\n**Citation requested by the data provider:** {d['citation_extra']}\n"
-    first = next(f for v in d["variants"].values() for f in v["files"] if f["dtype"]) if any(
-        f["dtype"] for v in d["variants"].values() for f in v["files"]) else None
-    example = f'x = sdrbench.load("{name}", "{first["path"]}")  # numpy array {tuple(first["shape"])}' if first else ""
+    v0, f = _example(name, d)
+    plain = ""
+    if f:
+        plain = f"""
+Without the package, any file can be read with `huggingface_hub` and numpy:
+
+```python
+from huggingface_hub import hf_hub_download
+import numpy as np
+p = hf_hub_download("{d['repo']}", "{f['path']}", repo_type="dataset")
+x = np.fromfile(p, dtype="{f['dtype']}").reshape({tuple(f['shape'])})
+```
+"""
+    others = [v for v in d["variants"] if v != v0]
+    variant_line = (f'\nOther variants: `sdrbench.dataset("{name}", "{others[0]}")`'
+                    + (f" (all: {', '.join(f'`{v}`' for v in others)})" if len(others) > 1 else "") + ".\n") if others else ""
     return f"""---
 license: other
 license_name: sdrbench
@@ -336,8 +553,7 @@ tags:
 - lossy-compression
 - sdrbench
 - hpc
-size_categories:
-- n<1K
+- sz3
 ---
 
 # SDRBench — {d['title']}
@@ -345,45 +561,32 @@ size_categories:
 {d['description']}
 
 This repository is an **unmodified mirror** of the {d['title']} dataset from
-[SDRBench]({CAT_PAGE}), the Scientific Data Reduction Benchmark. The original archives
-are hosted by Argonne National Laboratory on Globus; each archive was unpacked and its
-files uploaded byte-for-byte (sha256 of every file is listed in the `sdrbench` Python
-package catalog). The `metadata/` folder holds the original SDRBench property and
-template files.
+[SDRBench]({CAT_PAGE}), the Scientific Data Reduction Benchmark. The originals are hosted by
+Argonne National Laboratory on Globus; every archive was unpacked and its files uploaded
+byte-for-byte (sha256 verified). `metadata/` holds the original SDRBench property and template
+files. The mirror is kept in sync automatically by
+[szcompressor/sdrbench](https://github.com/szcompressor/sdrbench).
 
 - **Data source:** {d['source']}
 - **Total size:** {human(total)}
-- **Maintained by:** the SDRBench team. Report problems at https://github.com/szcompressor/sdrbench/issues
+- **Format:** raw little-endian binary, C order (slowest dimension first)
 {extra}
-## Contents
-
-All arrays are raw binary, little-endian, C order (slowest dimension first).
-
-| Folder | Files | Size | dtype | Shape | Original |
-|---|---|---|---|---|---|
-{chr(10).join(rows)}
-
 ## Usage
 
 ```bash
-pip install sdrbench
+pip install "sdrbench[sz3]"     # sdrbench + pysz (SZ3)
 ```
 
 ```python
-import sdrbench
-sdrbench.files("{name}")              # list files with dtype and shape
-{example}
-sdrbench.download("{name}", "...", source="globus")  # same file from the original Globus archive
+{card_python(name, d).rstrip()}
 ```
+{variant_line}
+Files are downloaded on first use and cached; if Hugging Face is unreachable the package falls
+back to the original archive on Globus.
+{plain}
+## Contents
 
-Or with plain `huggingface_hub` + numpy:
-
-```python
-from huggingface_hub import hf_hub_download
-import numpy as np
-p = hf_hub_download("{ORG}/{name}", "<path>", repo_type="dataset")
-x = np.fromfile(p, dtype="<f4")  # see the table above for dtype and shape
-```
+{chr(10).join(chr(10) + s for s in sections)}
 
 ## Citation
 
@@ -558,17 +761,19 @@ def main(argv=None):
     s = sub.add_parser("mirror")
     s.add_argument("--changed", metavar="CHECK_JSON", help="only archives listed by `check --output`")
     s.add_argument("--only", nargs="*", help="dataset names or archive paths")
-    s.add_argument("--max-gb", type=float, default=None, help="skip archives larger than this")
     s.add_argument("--workdir")
     s.add_argument("--dry", action="store_true", help="download and hash, but do not upload")
     s.add_argument("--fail-on-skip", action="store_true")
+    s.add_argument("--state-out", help="write state of mirrored archives to this file instead of state.json")
+    s = sub.add_parser("merge"); s.add_argument("fragments", nargs="+")
+    s = sub.add_parser("plan"); s.add_argument("check"); s.add_argument("--extra", nargs="*")
     s = sub.add_parser("catalog"); s.add_argument("--lenient", action="store_true", help="report rule errors instead of failing")
     s = sub.add_parser("cards"); s.add_argument("--only", nargs="*"); s.add_argument("--dry", action="store_true"); s.add_argument("--outdir")
     s = sub.add_parser("verify"); s.add_argument("--only", nargs="*"); s.add_argument("--all", action="store_true")
     s = sub.add_parser("import"); s.add_argument("dir")
     a = p.parse_args(argv)
     return {"check": cmd_check, "mirror": cmd_mirror, "catalog": cmd_catalog, "cards": cmd_cards,
-            "verify": cmd_verify, "import": cmd_import}[a.cmd](a)
+            "verify": cmd_verify, "import": cmd_import, "merge": cmd_merge, "plan": cmd_plan}[a.cmd](a)
 
 
 if __name__ == "__main__":

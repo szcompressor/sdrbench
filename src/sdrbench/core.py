@@ -1,32 +1,15 @@
 from __future__ import annotations
 
-import fnmatch
 import json
 import os
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import Iterator
 
 from .archive import fetch_archive, sha256_file
-
-SOURCES = ("hf", "globus")
-
-
-@dataclass(frozen=True)
-class FileInfo:
-    dataset: str
-    variant: str
-    path: str  # path inside the Hugging Face repo, e.g. "512x512x512/temperature.f32"
-    bytes: int
-    sha256: str
-    dtype: str | None  # numpy dtype string such as "<f4"; None for non-array files
-    shape: tuple | None
-
-    @property
-    def name(self) -> str:
-        return self.path.rsplit("/", 1)[-1]
-
 
 @lru_cache(maxsize=1)
 def catalog() -> dict:
@@ -34,48 +17,9 @@ def catalog() -> dict:
     return json.loads(resources.files(__package__).joinpath("catalog.json").read_text())
 
 
-def datasets() -> list[str]:
-    """Names of all available datasets, e.g. ``['cesm-atm', 'hacc', 'nyx', ...]``."""
+def list() -> list[str]:  # noqa: A001 - mirrors the module-level verb users expect
+    """Names of all datasets, e.g. ``['cesm-atm', 'exaalt', 'hacc', 'nyx', ...]``."""
     return sorted(catalog()["datasets"])
-
-
-def info(dataset: str) -> dict:
-    """Description, source, citation and variants of one dataset."""
-    try:
-        return catalog()["datasets"][dataset]
-    except KeyError:
-        raise KeyError(f"unknown dataset {dataset!r}; available: {', '.join(datasets())}") from None
-
-
-def variants(dataset: str) -> list[str]:
-    return list(info(dataset)["variants"])
-
-
-def files(dataset: str, pattern: str = "*", variant: str | None = None,
-          arrays_only: bool = False) -> list[FileInfo]:
-    """Files of a dataset whose repo path or file name matches ``pattern`` (glob)."""
-    out = []
-    for vname, v in info(dataset)["variants"].items():
-        if variant is not None and vname != variant:
-            continue
-        for f in v["files"]:
-            if not (fnmatch.fnmatch(f["path"], pattern) or fnmatch.fnmatch(f["path"].rsplit("/", 1)[-1], pattern)):
-                continue
-            if arrays_only and not f.get("dtype"):
-                continue
-            out.append(FileInfo(dataset, vname, f["path"], f["bytes"], f["sha256"],
-                                f.get("dtype"), tuple(f["shape"]) if f.get("shape") else None))
-    return out
-
-
-def _one(dataset: str, path: str) -> FileInfo:
-    hits = files(dataset, path)
-    exact = [f for f in hits if f.path == path]
-    hits = exact or hits
-    if len(hits) != 1:
-        names = ", ".join(f.path for f in hits[:10]) or "none"
-        raise ValueError(f"{path!r} matches {len(hits)} files in {dataset} ({names}); use the full path")
-    return hits[0]
 
 
 def cache_dir(path=None) -> Path:
@@ -84,56 +28,171 @@ def cache_dir(path=None) -> Path:
     return Path(os.environ.get("SDRBENCH_CACHE", Path.home() / ".cache" / "sdrbench"))
 
 
-def _download_hf(f: FileInfo, cache) -> Path:
+@dataclass(frozen=True)
+class Field:
+    """One file of a dataset. ``dtype``/``shape`` are None for non-array files (text, HDF5, ADIOS)."""
+
+    dataset: str
+    variant: str
+    name: str
+    path: str  # path inside the Hugging Face repo
+    nbytes: int
+    sha256: str
+    dtype: str | None
+    shape: tuple | None
+    transpose: tuple | None = None  # set for derived layouts: stored file = transpose of `shape`
+
+    @property
+    def filename(self) -> str:
+        return self.path.rsplit("/", 1)[-1]
+
+    def download(self, cache=None, source: str | None = None) -> Path:
+        """Local path of the file (downloaded and cached on first use)."""
+        return _fetch(self, cache, source)
+
+    def load(self, cache=None, mmap: bool = True, source: str | None = None):
+        """The file as a numpy array with its catalog dtype and C-order shape."""
+        import numpy as np
+
+        if not self.dtype:
+            raise ValueError(f"{self.path} is not a raw array; use .download() to get the file")
+        p = self.download(cache, source)
+        if self.transpose:  # derived layout: read the stored order, return a C-contiguous copy
+            stored = tuple(self.shape[self.transpose.index(i)] for i in range(len(self.shape)))
+            x = np.memmap(p, dtype=self.dtype, mode="r", shape=stored)
+            return np.ascontiguousarray(x.transpose(self.transpose))
+        if mmap:
+            return np.memmap(p, dtype=self.dtype, mode="r", shape=self.shape)
+        return np.fromfile(p, dtype=self.dtype).reshape(self.shape)
+
+
+class Dataset:
+    """One variant of an SDRBench dataset; a read-only mapping from field name to numpy array.
+
+    >>> nyx = sdrbench.dataset("nyx")
+    >>> nyx.fields
+    >>> t = nyx["temperature"]
+    """
+
+    def __init__(self, name: str, variant: str | None = None, cache=None):
+        if variant is None and "/" in name and name.split("/", 1)[0] in catalog()["datasets"]:
+            name, variant = name.split("/", 1)
+        try:
+            meta = catalog()["datasets"][name]
+        except KeyError:
+            raise KeyError(f"unknown dataset {name!r}; available: {', '.join(list())}") from None
+        variants = [*meta["variants"]]
+        if variant is None:
+            variant = variants[0]
+        if variant not in meta["variants"]:
+            raise KeyError(f"{name} has no variant {variant!r}; available: {', '.join(variants)}")
+        self.name, self.variant, self.variants, self.cache = name, variant, variants, cache
+        self.title = meta.get("title", name)
+        self.description = meta.get("description", "")
+        self.source_info = meta.get("source", "")
+        self.repo = meta["repo"]
+        self._archive = meta["variants"][variant]["archive"]
+        # field names (physical variable names) are assigned by the sync pipeline; other files keep their path
+        stored = meta["variants"][variant].get("archive_variant", variant)
+        self.note = meta["variants"][variant].get("note")
+        self.files = [Field(name, variant, f.get("name") or f["path"][len(stored) + 1:], f["path"], f["bytes"],
+                            f["sha256"], f.get("dtype"), tuple(f["shape"]) if f.get("shape") else None,
+                            tuple(f["transpose"]) if f.get("transpose") else None)
+                      for f in meta["variants"][variant]["files"]]
+        self._fields = {f.name: f for f in self.files if f.dtype}
+
+    # mapping interface -------------------------------------------------------------
+    @property
+    def fields(self) -> list[str]:
+        return [*self._fields]
+
+    def field(self, name: str) -> Field:
+        if name in self._fields:
+            return self._fields[name]
+        for f in self.files:  # also accept the file name or repo path
+            if name in (f.filename, f.path, f.path.split("/", 1)[-1]):
+                return f
+        raise KeyError(f"{self.name}/{self.variant} has no field {name!r}; fields: {', '.join(self.fields)}")
+
+    def __getitem__(self, name: str):
+        return self.field(name).load(self.cache)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._fields)
+
+    def __len__(self) -> int:
+        return len(self._fields)
+
+    def __contains__(self, name) -> bool:
+        return name in self._fields
+
+    def keys(self):
+        return self.fields
+
+    def items(self):
+        """(name, array) pairs; each file is downloaded when reached."""
+        for n in self._fields:
+            yield n, self[n]
+
+    @property
+    def nbytes(self) -> int:
+        return sum(f.nbytes for f in self.files)
+
+    def download(self, cache=None, source: str | None = None) -> list[Path]:
+        """Download every file of this variant; returns local paths."""
+        return [f.download(cache or self.cache, source) for f in self.files]
+
+    def __repr__(self) -> str:
+        shapes = sorted({"x".join(map(str, f.shape)) for f in self._fields.values()})
+        return (f"<sdrbench.Dataset {self.name}/{self.variant}: {len(self)} fields, "
+                f"{', '.join(shapes[:3])}{' ...' if len(shapes) > 3 else ''}, {self.nbytes / 1e9:.2f} GB>")
+
+
+def dataset(name: str, variant: str | None = None, cache=None) -> Dataset:
+    """Open a dataset (default: its first variant). ``"nyx/512x512x512_log"`` also selects a variant."""
+    return Dataset(name, variant, cache)
+
+
+def load(name: str, field: str, variant: str | None = None, cache=None, mmap: bool = True):
+    """Shortcut for ``dataset(name, variant)[field]``."""
+    return dataset(name, variant, cache).field(field).load(cache, mmap)
+
+
+# downloading ------------------------------------------------------------------------
+def _download_hf(f: Field, cache) -> Path:
     from huggingface_hub import hf_hub_download
 
-    repo = info(f.dataset)["repo"]
-    kwargs = {"cache_dir": str(cache / "hf")} if cache is not None else {}
+    repo = catalog()["datasets"][f.dataset]["repo"]
+    kwargs = {"cache_dir": str(Path(cache) / "hf")} if cache is not None else {}
     return Path(hf_hub_download(repo_id=repo, filename=f.path, repo_type="dataset", **kwargs))
 
 
-def _download_globus(f: FileInfo, cache) -> Path:
-    v = info(f.dataset)["variants"][f.variant]
+def _download_globus(f: Field, cache) -> Path:
+    v = catalog()["datasets"][f.dataset]["variants"][f.variant]
+    arch = v["archive"]
     root = cache_dir(cache) / "globus" / f.dataset
     local = root / f.path
     if not local.exists():
-        arch = v["archive"]
-        fetch_archive(arch["url"], root / f.variant, expected_md5=arch.get("md5"))
+        fetch_archive(arch["url"], root / v.get("archive_variant", f.variant), expected_md5=arch.get("md5"))
     if not local.exists():
-        raise FileNotFoundError(f"{f.path} not found in {v['archive']['url']}")
+        raise FileNotFoundError(f"{f.path} not found in {arch['url']}")
+    if sha256_file(local) != f.sha256:
+        raise IOError(f"sha256 mismatch for {local} (archive on Globus changed?)")
     return local
 
 
-def download(dataset: str, path: str, source: str = "hf", cache=None, verify: bool | None = None) -> Path:
-    """Download one file and return its local path.
-
-    ``path`` is a repo path (``"512x512x512/temperature.f32"``) or a unique file
-    name/glob (``"temperature.f32"``). ``source="hf"`` fetches the single file from
-    Hugging Face; ``source="globus"`` fetches the original SDRBench archive from
-    Globus, unpacks it into the cache, and returns the file from there.
-    ``verify`` checks the sha256 (default: on for Globus, off for HF, which
-    already verifies content hashes).
-    """
-    if source not in SOURCES:
-        raise ValueError(f"source must be one of {SOURCES}")
-    f = _one(dataset, path)
-    local = _download_hf(f, cache) if source == "hf" else _download_globus(f, cache)
-    if verify if verify is not None else source == "globus":
-        got = sha256_file(local)
-        if got != f.sha256:
-            raise IOError(f"sha256 mismatch for {local}: got {got}, expected {f.sha256}")
-    return local
-
-
-def load(dataset: str, path: str, source: str = "hf", cache=None, mmap: bool = True):
-    """Download a file (if needed) and return it as a numpy array with its catalog shape."""
-    import numpy as np
-
-    f = _one(dataset, path)
-    if not f.dtype:
-        raise ValueError(f"{f.path} is not a raw array file; use download() instead")
-    local = download(dataset, f.path, source=source, cache=cache)
-    shape = f.shape or (f.bytes // np.dtype(f.dtype).itemsize,)
-    if mmap:
-        return np.memmap(local, dtype=f.dtype, mode="r", shape=shape)
-    return np.fromfile(local, dtype=f.dtype).reshape(shape)
+def _fetch(f: Field, cache, source: str | None) -> Path:
+    """Hugging Face first; if that fails, the original archive on Globus."""
+    source = source or os.environ.get("SDRBENCH_SOURCE", "auto")
+    if source not in ("auto", "hf", "globus"):
+        raise ValueError("source must be 'auto', 'hf' or 'globus'")
+    if source == "globus":
+        return _download_globus(f, cache)
+    try:
+        return _download_hf(f, cache)
+    except Exception as e:  # network error, HF outage, file missing on the mirror, ...
+        if source == "hf":
+            raise
+        warnings.warn(f"Hugging Face download of {f.path} failed ({type(e).__name__}: {e}); "
+                      f"falling back to the original SDRBench archive on Globus", stacklevel=3)
+        return _download_globus(f, cache)
