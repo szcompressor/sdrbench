@@ -693,7 +693,8 @@ def cmd_verify(a):
     for name, d in cat["datasets"].items():
         if a.only and name not in a.only:
             continue
-        arrays = [f for v in d["variants"].values() for f in v["files"] if f["dtype"]]
+        # derived (transposed) variants are checked through their base files
+        arrays = [f for v in d["variants"].values() if "archive_variant" not in v for f in v["files"] if f["dtype"]]
         byname = {}
         for f in arrays:
             byname.setdefault(f["path"].rsplit("/", 1)[-1], []).append(f)
@@ -701,17 +702,28 @@ def cmd_verify(a):
             text = Path(hf_hub_download(d["repo"], p, repo_type="dataset")).read_text(errors="replace")
             for fname, vals, nelem in PROP_RE.findall(text):
                 expect = [float(x) for x in vals.split()][:10]
-                for f in byname.get(fname, []):
+                cands = byname.get(fname, [])
+                if not cands:
+                    continue
+                # several variants can hold a file of the same name: compare with the one(s) whose
+                # element count matches the property file
+                same_n = [f for f in cands if math.prod(f["shape"]) == int(nelem)]
+                if not same_n:
+                    nprop += 1
+                    problems.append(f"{name}/{fname} (property: no file with numOfElem={nelem})")
+                    print(f"[property] MISMATCH {name}/{fname}: no file with numOfElem={nelem} "
+                          f"(catalog shapes {[f['shape'] for f in cands]})")
+                    continue
+                for f in same_n:
                     nprop += 1
                     item = ITEMSIZE[f["dtype"]]
                     raw = read_range(d["repo"], f["path"], 0, len(expect) * item)
-                    got = struct.unpack("<%d%s" % (len(expect), "f" if item == 4 else "d"), raw)
-                    ok_vals = all(math.isclose(g, e, rel_tol=1e-4, abs_tol=2e-6) for g, e in zip(got, expect))
-                    ok_n = math.prod(f["shape"]) == int(nelem)
-                    status = "ok" if ok_vals and ok_n else "MISMATCH"
-                    print(f"[property] {status:8s} {name}/{f['path']}  shape={f['shape']} numOfElem={nelem}"
-                          + ("" if ok_vals else f"  first values {got[:3]} vs {expect[:3]}"))
-                    if status != "ok":
+                    import numpy as np
+                    got = np.frombuffer(raw, dtype=f["dtype"]).astype(float).tolist()
+                    ok = all(math.isclose(g, e, rel_tol=1e-4, abs_tol=2e-6) for g, e in zip(got, expect))
+                    print(f"[property] {'ok' if ok else 'MISMATCH':8s} {name}/{f['path']}  shape={f['shape']} "
+                          f"numOfElem={nelem}" + ("" if ok else f"  first values {got[:3]} vs {expect[:3]}"))
+                    if not ok:
                         problems.append(f"{name}/{f['path']} (property)")
         groups = {}
         for f in arrays:

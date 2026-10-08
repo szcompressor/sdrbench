@@ -7,9 +7,11 @@ file stored on Hugging Face.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import os
 import shutil
 import tarfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -49,9 +51,65 @@ class _HashingReader:
             pass
 
 
+class _ResumingResponse:
+    """Readable HTTP body that reconnects with a Range request when the connection drops,
+    so multi-GB downloads survive transient network failures."""
+
+    def __init__(self, url: str, retries: int = 10, timeout: float = 120):
+        self.url, self.retries, self.timeout = url, retries, timeout
+        self.pos = 0
+        self.total = None  # expected body length, from the first response's Content-Length
+        self.resp = self._connect()
+
+    def _connect(self):
+        headers = {"User-Agent": "sdrbench"}
+        if self.pos:
+            headers["Range"] = f"bytes={self.pos}-"
+        resp = urllib.request.urlopen(urllib.request.Request(self.url, headers=headers), timeout=self.timeout)
+        if self.pos and resp.status != 206:
+            resp.close()
+            raise IOError(f"{self.url}: server ignored the Range request, cannot resume")
+        length = resp.headers.get("Content-Length")
+        if self.total is None and length is not None:
+            self.total = int(length)
+        return resp
+
+    def read(self, n: int = -1) -> bytes:
+        for attempt in range(self.retries + 1):
+            try:
+                b = self.resp.read(n)
+                if not b and n != 0 and self.total is not None and self.pos < self.total:
+                    raise http.client.IncompleteRead(b"", self.total - self.pos)  # connection dropped
+                self.pos += len(b)
+                return b
+            except (OSError, http.client.HTTPException):
+                if attempt == self.retries:
+                    raise
+                time.sleep(min(60, 2 ** attempt))
+                try:
+                    self.resp.close()
+                except Exception:
+                    pass
+                try:
+                    self.resp = self._connect()
+                except (OSError, http.client.HTTPException):
+                    continue  # try again on the next attempt
+        return b""
+
+    def close(self):
+        self.resp.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
 def _open_url(url: str):
-    req = urllib.request.Request(url, headers={"User-Agent": "sdrbench"})
-    return urllib.request.urlopen(req, timeout=120)
+    if url.startswith(("http://", "https://")):
+        return _ResumingResponse(url)
+    return urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "sdrbench"}), timeout=120)
 
 
 def _safe_target(root: Path, name: str) -> Path:

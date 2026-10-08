@@ -55,3 +55,42 @@ def test_sha256_file(tmp_path):
     p = tmp_path / "f"
     p.write_bytes(b"abc")
     assert sha256_file(p) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_download_resumes_after_connection_drop(tmp_path):
+    """A server that cuts the connection mid-body; the reader must resume with Range."""
+    import http.server
+    import threading
+    from conftest import make_tar
+    md5 = make_tar(tmp_path / "x.tar.gz", {"big.f32": bytes(range(256)) * 4000})
+    blob = (tmp_path / "x.tar.gz").read_bytes()
+    hits = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            rng = self.headers.get("Range")
+            start = int(rng.split("=")[1].rstrip("-")) if rng else 0
+            hits.append(start)
+            body = blob[start:]
+            self.send_response(206 if rng else 200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if len(hits) == 1:  # first request: send part of the body, then drop the connection
+                self.wfile.write(body[: len(body) // 3])
+                self.wfile.flush()
+                self.connection.shutdown(2)
+                return
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        got, n = fetch_archive(f"http://127.0.0.1:{srv.server_port}/x.tar.gz", tmp_path / "out")
+    finally:
+        srv.shutdown()
+    assert got == md5 and n == len(blob)
+    assert len(hits) >= 2 and hits[0] == 0 and hits[1] > 0
+    assert (tmp_path / "out" / "big.f32").read_bytes() == bytes(range(256)) * 4000
