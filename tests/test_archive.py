@@ -1,0 +1,57 @@
+import io
+import tarfile
+
+import pytest
+
+from sdrbench.archive import fetch_archive, sha256_file
+from conftest import make_tar, make_zip
+
+
+def test_tar_single_top_dir_is_flattened_and_junk_dropped(tmp_path):
+    md5 = make_tar(tmp_path / "x.tar.gz", {"f1.f32": b"\x00" * 16, "d/f2.d64": b"\x01" * 8})
+    got_md5, n = fetch_archive((tmp_path / "x.tar.gz").as_uri(), tmp_path / "out")
+    assert got_md5 == md5 and n == (tmp_path / "x.tar.gz").stat().st_size
+    files = sorted(p.relative_to(tmp_path / "out").as_posix() for p in (tmp_path / "out").rglob("*") if p.is_file())
+    assert files == ["d/f2.d64", "f1.f32"]
+    assert (tmp_path / "out" / "f1.f32").read_bytes() == b"\x00" * 16
+
+
+def test_tar_without_top_dir_kept_as_is(tmp_path):
+    path = tmp_path / "flat.tar.gz"
+    with tarfile.open(path, "w:gz") as tf:
+        for name in ("a.f32", "b.f32"):
+            ti = tarfile.TarInfo(name); ti.size = 4
+            tf.addfile(ti, io.BytesIO(b"abcd"))
+    fetch_archive(path.as_uri(), tmp_path / "out")
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["a.f32", "b.f32"]
+
+
+def test_zip(tmp_path):
+    md5 = make_zip(tmp_path / "x.zip", {"top/a_20x2_double": b"\x02" * 320})
+    got, _ = fetch_archive((tmp_path / "x.zip").as_uri(), tmp_path / "out")
+    assert got == md5
+    assert [p.name for p in (tmp_path / "out").rglob("*") if p.is_file()] == ["a_20x2_double"]
+    assert not (tmp_path / "x.zip.partial").exists()
+
+
+def test_md5_mismatch_raises_and_leaves_nothing(tmp_path):
+    make_tar(tmp_path / "x.tar.gz", {"a": b"1"})
+    with pytest.raises(IOError, match="md5 mismatch"):
+        fetch_archive((tmp_path / "x.tar.gz").as_uri(), tmp_path / "out", expected_md5="0" * 32)
+    assert not (tmp_path / "out").exists() and not (tmp_path / "out.partial").exists()
+
+
+def test_path_traversal_rejected(tmp_path):
+    path = tmp_path / "evil.tar.gz"
+    with tarfile.open(path, "w:gz") as tf:
+        ti = tarfile.TarInfo("../../escape"); ti.size = 1
+        tf.addfile(ti, io.BytesIO(b"x"))
+    with pytest.raises(ValueError, match="unsafe path"):
+        fetch_archive(path.as_uri(), tmp_path / "out")
+    assert not (tmp_path.parent / "escape").exists()
+
+
+def test_sha256_file(tmp_path):
+    p = tmp_path / "f"
+    p.write_bytes(b"abc")
+    assert sha256_file(p) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

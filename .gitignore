@@ -1,0 +1,7 @@
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+src/sdrbench/_version.py
+check.json

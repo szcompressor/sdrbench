@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sdrbench"
+dynamic = ["version"]
+description = "Download and load SDRBench scientific datasets from Hugging Face or the original Globus archives"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "SDRBench team" }]
+keywords = ["sdrbench", "scientific data", "lossy compression", "benchmark", "hpc", "hugging face"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering",
+  "Operating System :: OS Independent",
+]
+dependencies = ["numpy>=1.21", "huggingface_hub>=0.23"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://sdrbench.github.io/"
+Source = "https://github.com/szcompressor/sdrbench"
+"Hugging Face" = "https://huggingface.co/sdrbench"
+
+[project.scripts]
+sdrbench = "sdrbench.cli:main"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/sdrbench/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sdrbench"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/sdrbench", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["online: needs network access to Hugging Face and Globus"]
+addopts = "-m 'not online'"
