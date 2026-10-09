@@ -178,7 +178,7 @@ jobs:
           frags=(fragments/*.json)
           [ ${#frags[@]} -gt 0 ] || { echo "no mirror leg produced state"; exit 1; }
           python sync/sync.py merge "${frags[@]}"
-          python sync/sync.py catalog
+          python sync/sync.py catalog --refresh ${{ join(fromJSON(needs.check.outputs.datasets), ' ') }}
           pytest -q
           python sync/sync.py verify --only ${{ join(fromJSON(needs.check.outputs.datasets), ' ') }}
           python sync/sync.py cards --only ${{ join(fromJSON(needs.check.outputs.datasets), ' ') }}

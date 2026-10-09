@@ -263,3 +263,18 @@ def test_catalog_pins_revisions():
     built, _ = sync.build_catalog(CFG, state, strict=False, revisions={"nyx": "abc123"})
     assert built["datasets"]["nyx"]["revision"] == "abc123"
     assert "revision" not in built["datasets"]["cesm-atm"]
+
+
+def test_catalog_refreshes_only_requested_revisions(monkeypatch, tmp_path):
+    """Card commits must not re-pin datasets: only --refresh'ed ones get a new revision."""
+    import argparse
+    revs = tmp_path / "revisions.json"
+    revs.write_text(json.dumps({"nyx": "old-nyx", "hacc": "old-hacc"}))
+    monkeypatch.setattr(sync, "REVISIONS", revs)
+    monkeypatch.setattr(sync, "CATALOG", tmp_path / "catalog.json")
+    asked = []
+    monkeypatch.setattr(sync, "fetch_revisions", lambda c: asked.append([*c["datasets"]]) or {d: "new-" + d for d in c["datasets"]})
+    sync.cmd_catalog(argparse.Namespace(lenient=True, refresh=None))
+    assert asked == [] and json.loads(revs.read_text()) == {"nyx": "old-nyx", "hacc": "old-hacc"}
+    sync.cmd_catalog(argparse.Namespace(lenient=True, refresh=["nyx"]))
+    assert asked == [["nyx"]] and json.loads(revs.read_text()) == {"nyx": "new-nyx", "hacc": "old-hacc"}

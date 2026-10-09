@@ -325,6 +325,7 @@ def cmd_mirror(a):
     if not a.workdir:
         shutil.rmtree(work, ignore_errors=True)
     if not a.dry and not a.state_out:
+        a.refresh = sorted(done_ds)
         cmd_catalog(a)
     if skipped:
         log("NOT mirrored (needs attention):", *skipped)
@@ -519,8 +520,14 @@ def fetch_revisions(c):
 
 
 def cmd_catalog(a):
-    if not getattr(a, "offline", False):
-        save_json(REVISIONS, fetch_revisions(cfg()))
+    # Revisions move only for datasets whose data was (re)mirrored: card/README commits do not
+    # change data, so re-pinning every dataset would make each card update look like a release.
+    refresh = getattr(a, "refresh", None)
+    if refresh:
+        revs = load_json(REVISIONS, {})
+        names = [*cfg()["datasets"]] if refresh == ["all"] else refresh
+        revs.update(fetch_revisions({"datasets": {d: None for d in names}}))
+        save_json(REVISIONS, revs)
     cat, errors = build_catalog(cfg(), load_json(STATE, {}), strict=not getattr(a, "lenient", False))
     for e in errors:
         log("RULE ERROR", e)
@@ -921,7 +928,8 @@ def main(argv=None):
     s = sub.add_parser("merge"); s.add_argument("fragments", nargs="+")
     s = sub.add_parser("plan"); s.add_argument("check"); s.add_argument("--extra", nargs="*")
     s = sub.add_parser("catalog"); s.add_argument("--lenient", action="store_true", help="report rule errors instead of failing")
-    s.add_argument("--offline", action="store_true", help="keep sync/revisions.json instead of asking Hugging Face")
+    s.add_argument("--refresh", nargs="*", metavar="DATASET",
+                   help="re-pin these datasets (or 'all') to their current Hugging Face revision; others keep sync/revisions.json")
     s = sub.add_parser("cards"); s.add_argument("--only", nargs="*"); s.add_argument("--dry", action="store_true"); s.add_argument("--outdir")
     s = sub.add_parser("verify"); s.add_argument("--only", nargs="*"); s.add_argument("--all", action="store_true")
     s = sub.add_parser("import"); s.add_argument("dir")
