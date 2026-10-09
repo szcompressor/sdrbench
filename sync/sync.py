@@ -313,9 +313,11 @@ def cmd_mirror(a):
         if old and old.get("md5") and old["md5"] != md5 and (old.get("etag"), old.get("bytes")) == (head.get("etag"), n):
             raise IOError(f"{rel}: md5 changed although size and ETag did not; investigate before syncing")
         log(f"   {len(files)} files, archive md5 {md5}, {time.time() - t0:.0f}s")
-        out_state[rel] = {"dataset": dataset, "variant": variant, "url": url, "bytes": n, "md5": md5,
-                          "etag": head.get("etag"), "last_modified": head.get("last_modified"),
-                          "files": files, "synced": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        new = {"dataset": dataset, "variant": variant, "url": url, "bytes": n, "md5": md5,
+               "etag": head.get("etag"), "last_modified": head.get("last_modified"),
+               "files": files, "synced": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        unchanged = old and all(old.get(k) == new[k] for k in ("md5", "bytes", "files", "etag", "last_modified"))
+        out_state[rel] = old if unchanged else new  # identical archive: keep the record (no spurious release)
         save_json(state_path if a.state_out else (work / "state.dry.json" if a.dry else STATE), out_state)
         if dataset not in done_ds:
             mirror_metadata(api, c, dataset, work, a.dry)
