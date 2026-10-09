@@ -533,7 +533,7 @@ def cmd_catalog(a):
         log("RULE ERROR", e)
     CATALOG.write_text(json.dumps(cat, indent=1) + "\n")
     nfiles = sum(len(v["files"]) for d in cat["datasets"].values() for v in d["variants"].values())
-    log(f"catalog: {len(cat['datasets'])} datasets, {nfiles} files -> {CATALOG.relative_to(ROOT)}")
+    log(f"catalog: {len(cat['datasets'])} datasets, {nfiles} files -> {os.path.relpath(CATALOG, ROOT)}")
     return 0
 
 
