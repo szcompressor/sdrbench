@@ -94,3 +94,50 @@ def test_download_resumes_after_connection_drop(tmp_path):
     assert got == md5 and n == len(blob)
     assert len(hits) >= 2 and hits[0] == 0 and hits[1] > 0
     assert (tmp_path / "out" / "big.f32").read_bytes() == bytes(range(256)) * 4000
+
+
+def test_resume_with_chunked_encoding_and_clean_close(tmp_path):
+    """Globus sends chunked bodies without Content-Length; a connection closed cleanly between
+    chunks must still be detected (via HEAD's Content-Length) and resumed."""
+    import http.server
+    import threading
+    from conftest import make_tar
+    md5 = make_tar(tmp_path / "x.tar.gz", {"big.f32": bytes(range(256)) * 8000})
+    blob = (tmp_path / "x.tar.gz").read_bytes()
+    gets = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(blob)))
+            self.end_headers()
+
+        def do_GET(self):
+            rng = self.headers.get("Range")
+            start = int(rng.split("=")[1].rstrip("-")) if rng else 0
+            gets.append(start)
+            body = blob[start:] if len(gets) > 1 else blob[start:len(blob) // 2]
+            self.send_response(206 if rng else 200)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            for i in range(0, len(body), 4096):
+                piece = body[i:i + 4096]
+                self.wfile.write(b"%x\r\n" % len(piece) + piece + b"\r\n")
+            if len(gets) > 1:
+                self.wfile.write(b"0\r\n\r\n")  # proper end only on the resumed request
+            self.wfile.flush()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        got, n = fetch_archive(f"http://127.0.0.1:{srv.server_port}/x.tar.gz", tmp_path / "out")
+    finally:
+        srv.shutdown()
+    assert got == md5 and n == len(blob) and gets[0] == 0 and 0 < gets[1] <= len(blob) // 2  # resumed mid-file
+    assert (tmp_path / "out" / "big.f32").read_bytes() == bytes(range(256)) * 8000

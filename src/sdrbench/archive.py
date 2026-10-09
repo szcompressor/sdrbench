@@ -58,8 +58,17 @@ class _ResumingResponse:
     def __init__(self, url: str, retries: int = 10, timeout: float = 120):
         self.url, self.retries, self.timeout = url, retries, timeout
         self.pos = 0
-        self.total = None  # expected body length, from the first response's Content-Length
+        self.total = self._head_length()  # expected body length (GET bodies may be chunked)
         self.resp = self._connect()
+
+    def _head_length(self):
+        req = urllib.request.Request(self.url, method="HEAD", headers={"User-Agent": "sdrbench"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                n = r.headers.get("Content-Length")
+                return int(n) if n is not None else None
+        except (OSError, http.client.HTTPException, ValueError):
+            return None
 
     def _connect(self):
         headers = {"User-Agent": "sdrbench"}
@@ -79,7 +88,9 @@ class _ResumingResponse:
             try:
                 b = self.resp.read(n)
                 if not b and n != 0 and self.total is not None and self.pos < self.total:
-                    raise http.client.IncompleteRead(b"", self.total - self.pos)  # connection dropped
+                    # the body ended early: a dropped connection (with chunked encoding this can
+                    # look like a clean end of stream)
+                    raise http.client.IncompleteRead(b"", self.total - self.pos)
                 self.pos += len(b)
                 return b
             except (OSError, http.client.HTTPException):
