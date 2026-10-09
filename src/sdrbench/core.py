@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import threading
 import warnings
 from dataclasses import dataclass
 from functools import lru_cache
@@ -18,6 +19,7 @@ def catalog() -> dict:
     return json.loads(resources.files(__package__).joinpath("catalog.json").read_text())
 
 
+# NOTE: this module defines list() for `sdrbench.list()`; never call the builtin `list(...)` here.
 def list() -> list[str]:  # noqa: A001 - mirrors the module-level verb users expect
     """Names of all datasets, e.g. ``['cesm-atm', 'exaalt', 'hacc', 'nyx', ...]``."""
     return sorted(catalog()["datasets"])
@@ -144,9 +146,17 @@ class Dataset:
     def nbytes(self) -> int:
         return sum(f.nbytes for f in self.files)
 
-    def download(self, dir=None, *, source: str | None = None) -> list[Path]:
-        """Download every file of this variant (to ``dir`` as plain files, or into the cache)."""
-        return [f.download(dir, cache=self.cache, source=source) for f in self.files]
+    def download(self, dir=None, *, fields=None, source: str | None = None, workers: int = 8) -> list[Path]:
+        """Download files of this variant in parallel (all, or the given ``fields``).
+
+        Files go to ``dir`` as plain files under their original names, or stay in the cache.
+        Returns the local paths in the order of ``fields`` (or of ``self.files``)."""
+        targets = [self.field(n) for n in fields] if fields else [f for f in self.files if not f.transpose] or self.files
+        if workers <= 1 or len(targets) == 1:
+            return [f.download(dir, cache=self.cache, source=source) for f in targets]
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(min(workers, len(targets))) as pool:
+            return [*pool.map(lambda f: f.download(dir, cache=self.cache, source=source), targets)]
 
     def __repr__(self) -> str:
         shapes = sorted({"x".join(map(str, f.shape)) for f in self._fields.values()})
@@ -189,13 +199,20 @@ def _download_hf(f: Field, cache, local_dir=None) -> Path:
     return Path(hf_hub_download(repo_id=repo, filename=f.path, repo_type="dataset", **kwargs))
 
 
+_archive_locks: dict = {}
+_locks_guard = threading.Lock()
+
+
 def _download_globus(f: Field, cache) -> Path:
     v = catalog()["datasets"][f.dataset]["variants"][f.variant]
     arch = v["archive"]
     root = cache_dir(cache) / "globus" / f.dataset
     local = root / f.path
-    if not local.exists():
-        fetch_archive(arch["url"], root / v.get("folder", f.variant), expected_md5=arch.get("md5"))
+    with _locks_guard:  # one download/unpack per archive, even with parallel callers
+        lock = _archive_locks.setdefault(arch["url"], threading.Lock())
+    with lock:
+        if not local.exists():
+            fetch_archive(arch["url"], root / v.get("folder", f.variant), expected_md5=arch.get("md5"))
     if not local.exists():
         raise FileNotFoundError(f"{f.path} not found in {arch['url']}")
     if sha256_file(local) != f.sha256:

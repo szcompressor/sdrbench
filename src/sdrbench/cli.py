@@ -23,6 +23,7 @@ def main(argv=None) -> int:
     pd.add_argument("-o", "--output", default=None,
                     help="save plain files under this directory as <dir>/<variant>/<file> (default: keep in cache)")
     pd.add_argument("--cache", default=None, help="cache directory (default: HF cache / ~/.cache/sdrbench)")
+    pd.add_argument("-j", "--workers", type=int, default=8, help="parallel downloads (default 8)")
     a = p.parse_args(argv)
 
     try:
@@ -42,9 +43,8 @@ def main(argv=None) -> int:
                 print(f"  {f.name:40s} {f.dtype or '':4s} {shape:20s} {_size(f.nbytes):>10s}")
         elif a.cmd == "download":
             d = core.dataset(a.dataset, cache=a.cache)
-            targets = [d.field(n) for n in a.fields] if a.fields else d.files
-            for f in targets:
-                print(f.download(a.output, cache=a.cache))
+            for p in d.download(a.output, fields=a.fields or None, workers=a.workers):
+                print(p)
     except KeyError as e:
         print(e.args[0], file=sys.stderr)
         return 1

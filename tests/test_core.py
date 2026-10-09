@@ -122,3 +122,34 @@ def test_save_plain_files_to_directory(fake_dataset, tmp_path):
     g = ds.field("sub/b").download(tmp_path / "g", source="globus")
     assert g == tmp_path / "g" / "v1" / "sub" / "b.d64" and g.read_bytes() == fake_dataset["b"].tobytes()
     assert not list((tmp_path / "g").rglob("*.partial"))
+
+
+def test_parallel_download_and_single_globus_unpack(fake_dataset, monkeypatch, tmp_path):
+    import threading
+    import time
+    import sdrbench.core as core_mod
+    seen, active, peak = [], [0], [0]
+    real = fake_dataset_hf = core_mod._download_hf
+    lock = threading.Lock()
+
+    def slow_hf(f, cache, local_dir=None):
+        with lock:
+            active[0] += 1; peak[0] = max(peak[0], active[0])
+        time.sleep(0.2)
+        with lock:
+            active[0] -= 1
+        seen.append(f.path)
+        return real(f, cache, local_dir)
+    monkeypatch.setattr(core_mod, "_download_hf", slow_hf)
+    paths = sdrbench.dataset("fake").download(tmp_path / "d", workers=3)
+    assert peak[0] >= 2 and len(paths) == 3                       # really concurrent
+    assert [p.name for p in paths] == ["a.f32", "b.d64", "notes.txt"]  # order preserved
+
+    # Globus: parallel callers of one archive download and unpack it exactly once
+    calls = []
+    real_fetch = core_mod.fetch_archive
+    def counting_fetch(*a, **k):
+        calls.append(a[0]); time.sleep(0.2); return real_fetch(*a, **k)
+    monkeypatch.setattr(core_mod, "fetch_archive", counting_fetch)
+    paths = sdrbench.dataset("fake", cache=tmp_path / "c").download(tmp_path / "g", source="globus", workers=3)
+    assert len(calls) == 1 and all(p.exists() for p in paths)

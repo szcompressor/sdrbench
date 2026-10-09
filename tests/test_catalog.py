@@ -162,3 +162,14 @@ def test_variant_names_have_no_dimension_strings():
     for d, ds in CATALOG["datasets"].items():
         for v in ds["variants"]:
             assert not re.search(r"\d+x\d+", v), (d, v)
+
+
+def test_core_never_calls_builtin_list():
+    """core.py defines list() (sdrbench.list); a stray list(...) call there would call it."""
+    import ast
+    src = (ROOT / "src" / "sdrbench" / "core.py").read_text() if (ROOT / "src").exists() else None
+    if src is None:
+        pytest.skip("source tree not available (testing an installed wheel)")
+    calls = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "list"]
+    assert all(c.args == [] and c.keywords == [] for c in calls), "use [*x] instead of list(x) in core.py"
