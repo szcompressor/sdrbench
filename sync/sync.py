@@ -519,6 +519,14 @@ def fetch_revisions(c):
     return revs
 
 
+def _shown(path):
+    """Path relative to the repo when inside it (any OS, any drive), else absolute."""
+    try:
+        return str(Path(path).resolve().relative_to(ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
 def cmd_catalog(a):
     # Revisions move only for datasets whose data was (re)mirrored: card/README commits do not
     # change data, so re-pinning every dataset would make each card update look like a release.
@@ -533,7 +541,7 @@ def cmd_catalog(a):
         log("RULE ERROR", e)
     CATALOG.write_text(json.dumps(cat, indent=1) + "\n")
     nfiles = sum(len(v["files"]) for d in cat["datasets"].values() for v in d["variants"].values())
-    log(f"catalog: {len(cat['datasets'])} datasets, {nfiles} files -> {os.path.relpath(CATALOG, ROOT)}")
+    log(f"catalog: {len(cat['datasets'])} datasets, {nfiles} files -> {_shown(CATALOG)}")
     return 0
 
 
