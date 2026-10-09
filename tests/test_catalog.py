@@ -173,3 +173,61 @@ def test_core_never_calls_builtin_list():
     calls = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
              and isinstance(n.func, ast.Name) and n.func.id == "list"]
     assert all(c.args == [] and c.keywords == [] for c in calls), "use [*x] instead of list(x) in core.py"
+
+
+class FakeHF:
+    """Records commits; pretends the repo already holds `existing` files."""
+    def __init__(self, existing):
+        self.existing, self.commits = existing, []
+
+    def list_repo_files(self, repo, repo_type=None):
+        return self.existing
+
+    def create_commit(self, repo_id, repo_type, operations, commit_message):
+        from huggingface_hub import CommitOperationDelete
+        self.commits.append(([o.path_in_repo for o in operations if not isinstance(o, CommitOperationDelete)],
+                             [o.path_in_repo for o in operations if isinstance(o, CommitOperationDelete)]))
+
+
+def _tar(tmp_path, n):
+    from conftest import make_tar
+    path = tmp_path / f"t{n}.tar.gz"
+    make_tar(path, {f"f{i}.f32": bytes([i]) * 4096 for i in range(n)})
+    return path
+
+
+def test_truncated_archive_deletes_nothing(tmp_path):
+    src = _tar(tmp_path, 5)
+    api = FakeHF([f"v/f{i}.f32" for i in range(5)])
+    with pytest.raises(IOError, match="nothing deleted"):
+        sync.stream_mirror(api, "sdrbench/x", "v", src.as_uri(), tmp_path / "s",
+                           expected_bytes=src.stat().st_size + 1000)
+    assert all(not dels for _, dels in api.commits)
+
+
+def test_mass_deletion_refused_unless_allowed(tmp_path):
+    src = _tar(tmp_path, 2)
+    api = FakeHF([f"v/f{i}.f32" for i in range(10)])
+    with pytest.raises(IOError, match="refusing"):
+        sync.stream_mirror(api, "sdrbench/x", "v", src.as_uri(), tmp_path / "s", expected_bytes=src.stat().st_size)
+    api = FakeHF([f"v/f{i}.f32" for i in range(10)])
+    sync.stream_mirror(api, "sdrbench/x", "v", src.as_uri(), tmp_path / "s2", expected_bytes=src.stat().st_size,
+                       max_delete_fraction=1.0)
+    assert sorted(api.commits[-1][1]) == sorted(f"v/f{i}.f32" for i in range(2, 10))
+
+
+def test_normal_update_removes_only_stale_files(tmp_path):
+    src = _tar(tmp_path, 8)
+    api = FakeHF([f"v/f{i}.f32" for i in range(8)] + ["v/old.f32", "w/other.f32"])
+    files, _, n = sync.stream_mirror(api, "sdrbench/x", "v", src.as_uri(), tmp_path / "s",
+                                     expected_bytes=src.stat().st_size)
+    assert n == src.stat().st_size and len(files) == 8
+    assert api.commits[-1][1] == ["v/old.f32"]   # other variants untouched
+
+
+def test_catalog_pins_revisions():
+    built, _ = sync.build_catalog(CFG, {}, strict=False, revisions={"nyx": "abc123"})
+    state = json.loads((ROOT / "sync" / "state.json").read_text())
+    built, _ = sync.build_catalog(CFG, state, strict=False, revisions={"nyx": "abc123"})
+    assert built["datasets"]["nyx"]["revision"] == "abc123"
+    assert "revision" not in built["datasets"]["cesm-atm"]

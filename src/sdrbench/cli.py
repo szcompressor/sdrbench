@@ -21,7 +21,7 @@ def main(argv=None) -> int:
     pd.add_argument("dataset")
     pd.add_argument("fields", nargs="*", help="field names (default: all files)")
     pd.add_argument("-o", "--output", default=None,
-                    help="save plain files under this directory as <dir>/<variant>/<file> (default: keep in cache)")
+                    help="save plain files under this directory as <dir>/<repo path> (default: keep in cache)")
     pd.add_argument("--cache", default=None, help="cache directory (default: HF cache / ~/.cache/sdrbench)")
     pd.add_argument("-j", "--workers", type=int, default=8, help="parallel downloads (default 8)")
     a = p.parse_args(argv)

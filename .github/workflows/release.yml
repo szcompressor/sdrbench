@@ -61,7 +61,17 @@ jobs:
         run: python sync/sync.py check --output check.json
       - name: Datasets to mirror
         id: plan
-        run: python sync/sync.py plan check.json --extra ${{ github.event_name == 'workflow_dispatch' && inputs.only || '' }}
+        env:
+          ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.only || '' }}
+        run: |
+          # word-split ONLY into dataset names; reject anything that is not a plain name
+          read -ra only <<< "$ONLY"
+          for d in "${only[@]}"; do [[ "$d" =~ ^[a-z0-9-]+$ ]] || { echo "bad dataset name: $d"; exit 1; }; done
+          python sync/sync.py plan check.json --extra "${only[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check
+          path: check.json
       - name: Open an issue when the SDRBench page lists new or removed archives
         if: steps.check.outputs.attention == 'true'
         run: |
@@ -84,6 +94,8 @@ jobs:
     if: needs.check.outputs.datasets != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -107,11 +119,22 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: check
       - name: Mirror ${{ matrix.dataset }} (archives streamed one file at a time)
+        env:
+          DATASET: ${{ matrix.dataset }}
+          FORCED: ${{ github.event_name == 'workflow_dispatch' && inputs.only || '' }}
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry && '--dry' || '' }}
         run: |
-          python sync/sync.py mirror --only ${{ matrix.dataset }} --workdir "$WORK" \
-            --state-out "state-${{ matrix.dataset }}.json" --fail-on-skip \
-            ${{ github.event_name == 'workflow_dispatch' && inputs.dry && '--dry' || '' }}
+          # a forced dataset re-mirrors all its archives; otherwise only those `check` flagged
+          args=(--changed check.json)
+          read -ra forced <<< "$FORCED"
+          for d in "${forced[@]}"; do [ "$d" = "$DATASET" ] && args=(); done
+          [ -n "$DRY" ] && args+=(--dry)
+          python sync/sync.py mirror --only "$DATASET" "${args[@]}" --workdir "$WORK" \
+            --state-out "state-$DATASET.json" --fail-on-skip
           df -h "$WORK"
       - uses: actions/upload-artifact@v4
         with:
@@ -120,10 +143,12 @@ jobs:
 
   finalize:
     needs: [check, mirror]
+    # runs even when some mirror legs failed: their HF changes are already live, so the state of
+    # every leg that finished must be recorded; the job fails at the end in that case
     if: >-
       always() && needs.check.result == 'success' &&
       !(github.event_name == 'workflow_dispatch' && inputs.dry) &&
-      (needs.mirror.result == 'success' ||
+      (needs.mirror.result == 'success' || needs.mirror.result == 'failure' ||
        (needs.mirror.result == 'skipped' && github.event_name == 'workflow_dispatch' && inputs.release))
     runs-on: ubuntu-latest
     permissions:
@@ -141,15 +166,18 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[test]"
       - uses: actions/download-artifact@v4
-        if: needs.mirror.result == 'success'
+        if: needs.mirror.result != 'skipped'
         with:
           pattern: state-*
           path: fragments
           merge-multiple: true
       - name: Merge state, rebuild catalog, test, verify against the data, refresh dataset cards
-        if: needs.mirror.result == 'success'
+        if: needs.mirror.result != 'skipped'
         run: |
-          python sync/sync.py merge fragments/*.json
+          shopt -s nullglob
+          frags=(fragments/*.json)
+          [ ${#frags[@]} -gt 0 ] || { echo "no mirror leg produced state"; exit 1; }
+          python sync/sync.py merge "${frags[@]}"
           python sync/sync.py catalog
           pytest -q
           python sync/sync.py verify --only ${{ join(fromJSON(needs.check.outputs.datasets), ' ') }}
@@ -160,20 +188,28 @@ jobs:
           git config user.name "sdrbench-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           changed=false
-          if ! git diff --quiet -- sync/state.json src/sdrbench/catalog.json; then
-            git add sync/state.json src/sdrbench/catalog.json
+          if ! git diff --quiet -- sync/state.json sync/revisions.json src/sdrbench/catalog.json; then
+            git add sync/state.json sync/revisions.json src/sdrbench/catalog.json
             git commit -m "Sync SDRBench mirror ($(date -u +%Y-%m-%d))"
-            git push origin HEAD:${{ github.ref_name }}
+            git pull --rebase origin "$GITHUB_REF_NAME"   # main may have moved during a long run
+            git push origin "HEAD:$GITHUB_REF_NAME"
             changed=true
           fi
           if [ "$changed" = true ] || [ "${{ github.event_name == 'workflow_dispatch' && inputs.release }}" = true ]; then
-            last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0)
-            IFS=. read -r major minor patch <<< "${last#v}"
+            git fetch --tags --force
+            last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            IFS=. read -r major minor patch <<< "${last:-v0.0.0}"
+            major=${major#v}
             tag="v${major}.${minor}.$((patch + 1))"
             git tag -a "$tag" -m "$tag"
             git push origin "$tag"
             echo "tag=$tag" >> "$GITHUB_OUTPUT"
           fi
+      - name: Fail if a mirror leg failed
+        if: needs.mirror.result == 'failure'
+        run: |
+          echo "::error::some datasets failed to mirror; the others were recorded and released"
+          exit 1
 
   build:
     needs: finalize

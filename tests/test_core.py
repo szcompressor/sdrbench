@@ -5,6 +5,8 @@ import sdrbench
 import sdrbench.core as core
 from sdrbench.cli import main as cli
 
+REAL_DOWNLOAD_HF = core._download_hf  # captured before the fixture replaces it
+
 
 def test_list_and_fields(fake_dataset):
     assert sdrbench.list() == ["fake"]
@@ -50,12 +52,63 @@ def test_globus_bytes_equal_hf(fake_dataset):
     assert sdrbench.dataset("fake").field("a").download(cache=fake_dataset["cache"], source="globus").exists()
 
 
-def test_globus_sha_mismatch_detected(fake_dataset):
+def test_globus_cache_is_verified_once_and_repaired(fake_dataset, monkeypatch):
     f = sdrbench.dataset("fake").field("a")
     p = f.download(cache=fake_dataset["cache"], source="globus")
-    p.write_bytes(b"\x00" * p.stat().st_size)
+    hashes = []
+    real = core.sha256_file
+    monkeypatch.setattr(core, "sha256_file", lambda q: hashes.append(q) or real(q))
+    f.download(cache=fake_dataset["cache"], source="globus")
+    assert hashes == []                        # verified marker: no re-hash of big files
+    p.write_bytes(b"\x00" * p.stat().st_size)  # corrupt the cached copy
+    q = f.download(cache=fake_dataset["cache"], source="globus")
+    assert q.read_bytes() == fake_dataset["a"].tobytes()  # unpacked again and fixed
+
+
+def test_globus_archive_not_matching_catalog_raises(fake_dataset):
+    entry = fake_dataset["catalog"]["datasets"]["fake"]["variants"]["v1"]["files"][0]
+    entry["sha256"] = "0" * 64
+    with pytest.raises(IOError, match="does not match the catalog"):
+        sdrbench.dataset("fake").field("a").download(cache=fake_dataset["cache"], source="globus")
+
+
+def test_hf_download_is_checked_against_catalog(fake_dataset, monkeypatch, tmp_path):
+    bad = tmp_path / "bad.f32"
+    bad.write_bytes(b"\x00" * 96)
+    import types
+    fake_hub = types.SimpleNamespace(hf_hub_download=lambda **k: str(bad))
+    monkeypatch.setitem(__import__("sys").modules, "huggingface_hub", fake_hub)
+    monkeypatch.setattr(core, "_download_hf", REAL_DOWNLOAD_HF)
     with pytest.raises(IOError, match="sha256 mismatch"):
-        f.download(cache=fake_dataset["cache"], source="globus")
+        sdrbench.dataset("fake").field("a").download(source="hf")
+
+
+def test_no_fallback_on_local_disk_errors_or_offline(fake_dataset, monkeypatch):
+    import errno as _errno
+    def full(f, cache, local_dir=None):
+        raise OSError(_errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(core, "_download_hf", full)
+    with pytest.raises(OSError, match="No space"):
+        sdrbench.dataset("fake").field("a").download()
+    def down(f, cache, local_dir=None):
+        raise ConnectionError("unreachable")
+    monkeypatch.setattr(core, "_download_hf", down)
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    with pytest.raises(ConnectionError):
+        sdrbench.dataset("fake").field("a").download()
+
+
+def test_contains_and_non_array_getitem(fake_dataset):
+    ds = sdrbench.dataset("fake")
+    assert "A" in ds and "a.f32" in ds and "notes.txt" not in ds and "zzz" not in ds
+    with pytest.raises(KeyError, match="not an array field"):
+        ds["notes.txt"]
+
+
+def test_type_hints_resolve():
+    import typing
+    assert typing.get_type_hints(sdrbench.list)["return"] == typing.List[str]
+    typing.get_type_hints(sdrbench.Dataset.download)
 
 
 def test_errors(fake_dataset):
@@ -67,6 +120,8 @@ def test_errors(fake_dataset):
         sdrbench.dataset("fake")["zzz"]
     with pytest.raises(ValueError, match="not a raw array"):
         sdrbench.dataset("fake").field("notes.txt").load()
+    with pytest.raises(KeyError, match="not an array field"):
+        sdrbench.dataset("fake")["notes.txt"]
     with pytest.raises(ValueError, match="source must be"):
         sdrbench.dataset("fake").field("a").download(source="ftp")
 

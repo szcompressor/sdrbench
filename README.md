@@ -19,7 +19,7 @@ for name, x in nyx.items(): ...          # downloads each field when reached
 sdrbench.load("cesm-atm", "CLDHGH")      # one-liner
 
 # save the raw files (original SDRBench names) to a directory of your choice
-nyx.field("temperature").download("data/")   # -> data/512x512x512/temperature.f32 (original SDRBench name)
+nyx.field("temperature").download("data/")   # -> data/512x512x512/temperature.f32 (repo path, original name)
 nyx.download("data/")                        # every file of the variant
 ```
 
@@ -43,17 +43,21 @@ Command line:
 ```bash
 sdrbench list
 sdrbench info hurricane-isabel/P
-sdrbench download nyx temperature -o data/     # plain files under data/<variant>/
+sdrbench download nyx temperature -o data/     # plain files under data/<repo path>
 ```
 
 - **Field names** are the physical variables (`CLDHGH`, `T`, `temperature`); dtype and shape come
   from the catalog, not from the file name. The original SDRBench file name also works
   (`ds["CLDHGH_1_1800_3600.f32"]`).
 - **Shapes are C order** (slowest dimension first), the convention of the SZ3 test-suite table, so
-  `np.fromfile(path, dtype).reshape(shape)` is always right.
-- **Downloads** come from Hugging Face and are cached; if that fails the package falls back to the
-  original SDRBench archive on Globus (verified by sha256). `field.download(source="globus")`
-  forces Globus.
+  `np.fromfile(path, dtype).reshape(field.shape)` is right for every stored file. Derived layouts
+  (QMCPACK `preconditioned`) are the exception: their file is the stored original, so use
+  `.reshape(field.stored_shape).transpose(field.transpose)`, or simply `ds[name]`.
+- **Downloads** come from Hugging Face, pinned to the commit the catalog was built from and checked
+  against its sha256, and are cached (`SDRBENCH_CACHE` moves the cache). If Hugging Face cannot
+  deliver, the package falls back to the original SDRBench archive on Globus (whole archive,
+  verified by md5 and sha256; a warning shows its size). `field.download(source="globus")` forces
+  Globus. `ds.download(dir)` fetches files in parallel (`workers=`, CLI `-j`).
 - Files on Hugging Face are byte-for-byte the files inside the SDRBench archives (a single top-level
   folder inside an archive is dropped). Derived layouts are computed on load and not stored:
   QMCPACK's default variant `preconditioned` (288 x 115 x 69 x 69) is the transpose of the stored

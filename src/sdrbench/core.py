@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
+import tempfile
 import threading
 import warnings
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, List, Optional, Tuple
 
 from .archive import fetch_archive, sha256_file
+
+# NOTE: this module defines list() for `sdrbench.list()`. Never call the builtin `list(...)` here
+# and annotate with typing.List, so that typing.get_type_hints() keeps working.
+
 
 @lru_cache(maxsize=1)
 def catalog() -> dict:
@@ -19,13 +26,13 @@ def catalog() -> dict:
     return json.loads(resources.files(__package__).joinpath("catalog.json").read_text())
 
 
-# NOTE: this module defines list() for `sdrbench.list()`; never call the builtin `list(...)` here.
-def list() -> list[str]:  # noqa: A001 - mirrors the module-level verb users expect
+def list() -> List[str]:  # noqa: A001 - mirrors the module-level verb users expect
     """Names of all datasets, e.g. ``['cesm-atm', 'exaalt', 'hacc', 'nyx', ...]``."""
     return sorted(catalog()["datasets"])
 
 
 def cache_dir(path=None) -> Path:
+    """Cache root: ``path`` if given, else ``$SDRBENCH_CACHE``, else ``~/.cache/sdrbench``."""
     if path is not None:
         return Path(path)
     return Path(os.environ.get("SDRBENCH_CACHE", Path.home() / ".cache" / "sdrbench"))
@@ -38,35 +45,48 @@ class Field:
     dataset: str
     variant: str
     name: str
-    path: str  # path inside the Hugging Face repo
+    path: str  # path inside the Hugging Face repo: <folder>/<original SDRBench file name>
     nbytes: int
     sha256: str
-    dtype: str | None
-    shape: tuple | None
-    transpose: tuple | None = None  # set for derived layouts: stored file = transpose of `shape`
+    dtype: Optional[str]
+    shape: Optional[Tuple[int, ...]]
+    transpose: Optional[Tuple[int, ...]] = None  # derived layout: shape = stored array transposed by this
 
     @property
     def filename(self) -> str:
         return self.path.rsplit("/", 1)[-1]
 
-    def download(self, dir=None, *, cache=None, source: str | None = None) -> Path:
+    @property
+    def stored_shape(self) -> Optional[Tuple[int, ...]]:
+        """C-order shape of the bytes in the file. Equals ``shape`` except for derived
+        (transposed) layouts, whose file is the stored original: reshape the file to
+        ``stored_shape`` and then ``.transpose(field.transpose)``."""
+        if not self.transpose or self.shape is None:
+            return self.shape
+        return tuple(self.shape[self.transpose.index(i)] for i in range(len(self.shape)))
+
+    def download(self, dir=None, *, cache=None, source: Optional[str] = None) -> Path:
         """Download the file and return its local path.
 
         Without ``dir`` the file stays in the cache. With ``dir`` it is saved as a plain file
-        under its original SDRBench name, ``<dir>/<variant>/<file>``, and that path is returned.
+        with its original SDRBench name at ``<dir>/<path>`` (``path`` starts with the dataset's
+        folder on Hugging Face), and that path is returned. For derived (transposed) layouts the
+        file is the stored original: see ``stored_shape``.
         """
         return _fetch(self, cache, source, local_dir=dir)
 
-    def load(self, cache=None, mmap: bool = True, source: str | None = None):
-        """The file as a numpy array with its catalog dtype and C-order shape."""
+    def load(self, cache=None, mmap: bool = True, source: Optional[str] = None):
+        """The file as a numpy array with its catalog dtype and C-order shape.
+
+        Memory-mapped by default. Derived (transposed) layouts are always returned as an
+        in-memory C-contiguous copy."""
         import numpy as np
 
         if not self.dtype:
             raise ValueError(f"{self.path} is not a raw array; use .download() to get the file")
         p = self.download(cache=cache, source=source)
-        if self.transpose:  # derived layout: read the stored order, return a C-contiguous copy
-            stored = tuple(self.shape[self.transpose.index(i)] for i in range(len(self.shape)))
-            x = np.memmap(p, dtype=self.dtype, mode="r", shape=stored)
+        if self.transpose:
+            x = np.memmap(p, dtype=self.dtype, mode="r", shape=self.stored_shape)
             return np.ascontiguousarray(x.transpose(self.transpose))
         if mmap:
             return np.memmap(p, dtype=self.dtype, mode="r", shape=self.shape)
@@ -81,7 +101,7 @@ class Dataset:
     >>> t = nyx["temperature"]
     """
 
-    def __init__(self, name: str, variant: str | None = None, cache=None):
+    def __init__(self, name: str, variant: Optional[str] = None, cache=None):
         if variant is None and "/" in name:
             name, variant = name.split("/", 1)
         name = _resolve(name, catalog()["datasets"], "dataset", key=_norm_dataset)
@@ -93,23 +113,24 @@ class Dataset:
         self.description = meta.get("description", "")
         self.source_info = meta.get("source", "")
         self.repo = meta["repo"]
-        self._archive = meta["variants"][variant]["archive"]
-        # field names (physical variable names) are assigned by the sync pipeline; other files keep their path
-        stored = meta["variants"][variant].get("folder", variant)  # folder on Hugging Face
-        self.note = meta["variants"][variant].get("note")
-        self.files = [Field(name, variant, f.get("name") or f["path"][len(stored) + 1:], f["path"], f["bytes"],
-                            f["sha256"], f.get("dtype"), tuple(f["shape"]) if f.get("shape") else None,
+        v = meta["variants"][variant]
+        self.folder = v.get("folder", variant)  # folder on Hugging Face
+        self.note = v.get("note")
+        # field names (physical variable names) come from the catalog; other files keep their path
+        self.files = [Field(name, variant, f.get("name") or f["path"][len(self.folder) + 1:], f["path"],
+                            f["bytes"], f["sha256"], f.get("dtype"),
+                            tuple(f["shape"]) if f.get("shape") else None,
                             tuple(f["transpose"]) if f.get("transpose") else None)
-                      for f in meta["variants"][variant]["files"]]
+                      for f in v["files"]]
         self._fields = {f.name: f for f in self.files if f.dtype}
 
     # mapping interface -------------------------------------------------------------
     @property
-    def fields(self) -> list[str]:
+    def fields(self) -> List[str]:
         return [*self._fields]
 
     def field(self, name: str) -> Field:
-        """Look up a field by name (case-insensitive if unambiguous), file name, or repo path."""
+        """Look up a file by field name (case-insensitive if unambiguous), file name, or repo path."""
         if name in self._fields:
             return self._fields[name]
         for f in self.files:  # also accept the file name or repo path
@@ -123,7 +144,10 @@ class Dataset:
         raise KeyError(f"{self.name}/{self.variant} has no field {name!r}; fields: {', '.join(self.fields)}")
 
     def __getitem__(self, name: str):
-        return self.field(name).load(self.cache)
+        f = self.field(name)
+        if not f.dtype:
+            raise KeyError(f"{f.path} is not an array field; use ds.field({name!r}).download()")
+        return f.load(self.cache)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._fields)
@@ -132,7 +156,10 @@ class Dataset:
         return len(self._fields)
 
     def __contains__(self, name) -> bool:
-        return name in self._fields
+        try:
+            return bool(self.field(name).dtype)
+        except KeyError:
+            return False
 
     def keys(self):
         return self.fields
@@ -146,17 +173,21 @@ class Dataset:
     def nbytes(self) -> int:
         return sum(f.nbytes for f in self.files)
 
-    def download(self, dir=None, *, fields=None, source: str | None = None, workers: int = 8) -> list[Path]:
+    def download(self, dir=None, *, fields=None, source: Optional[str] = None, workers: int = 8) -> List[Path]:
         """Download files of this variant in parallel (all, or the given ``fields``).
 
-        Files go to ``dir`` as plain files under their original names, or stay in the cache.
-        Returns the local paths in the order of ``fields`` (or of ``self.files``)."""
-        targets = [self.field(n) for n in fields] if fields else [f for f in self.files if not f.transpose] or self.files
-        if workers <= 1 or len(targets) == 1:
-            return [f.download(dir, cache=self.cache, source=source) for f in targets]
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(min(workers, len(targets))) as pool:
-            return [*pool.map(lambda f: f.download(dir, cache=self.cache, source=source), targets)]
+        Files go to ``dir`` as plain files with their original names (``<dir>/<path>``), or stay
+        in the cache. Returns the local paths in the order of ``fields`` (or of ``self.files``)."""
+        targets = [self.field(n) for n in fields] if fields else self.files
+        unique = [*{f.path: f for f in targets}.values()]  # never fetch one file twice concurrently
+        if workers <= 1 or len(unique) == 1:
+            got = {f.path: f.download(dir, cache=self.cache, source=source) for f in unique}
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(min(workers, len(unique))) as pool:
+                paths = pool.map(lambda f: f.download(dir, cache=self.cache, source=source), unique)
+                got = dict(zip([f.path for f in unique], paths))
+        return [got[f.path] for f in targets]
 
     def __repr__(self) -> str:
         shapes = sorted({"x".join(map(str, f.shape)) for f in self._fields.values()})
@@ -178,68 +209,124 @@ def _resolve(name: str, choices, what: str, key=str.lower) -> str:
     raise KeyError(f"unknown {what} {name!r}; available: {', '.join(choices)}")
 
 
-def dataset(name: str, variant: str | None = None, cache=None) -> Dataset:
-    """Open a dataset (default: its first variant). ``"nyx/512x512x512_log"`` also selects a variant."""
+def dataset(name: str, variant: Optional[str] = None, cache=None) -> Dataset:
+    """Open a dataset (default: its first variant). ``"nyx/log"`` also selects a variant."""
     return Dataset(name, variant, cache)
 
 
-def load(name: str, field: str, variant: str | None = None, cache=None, mmap: bool = True):
+def load(name: str, field: str, variant: Optional[str] = None, cache=None, mmap: bool = True):
     """Shortcut for ``dataset(name, variant)[field]``."""
     return dataset(name, variant, cache).field(field).load(cache, mmap)
 
 
 # downloading ------------------------------------------------------------------------
+def _hf_verified(path: Path, f: Field, local_dir) -> bool:
+    """Cheap integrity check of a Hugging Face download against the catalog sha256: LFS files
+    are content-addressed (cache blob name / recorded etag = sha256); others are hashed."""
+    try:
+        if local_dir is None:
+            if path.resolve().name == f.sha256:
+                return True
+        else:
+            meta = Path(local_dir) / ".cache" / "huggingface" / "download" / (f.path + ".metadata")
+            lines = meta.read_text().splitlines() if meta.exists() else []
+            if len(lines) > 1 and lines[1].strip().strip('"') == f.sha256:
+                return True
+    except OSError:
+        pass
+    return sha256_file(path) == f.sha256
+
+
 def _download_hf(f: Field, cache, local_dir=None) -> Path:
     from huggingface_hub import hf_hub_download
 
-    repo = catalog()["datasets"][f.dataset]["repo"]
-    kwargs = {"cache_dir": str(Path(cache) / "hf")} if cache is not None else {}
+    meta = catalog()["datasets"][f.dataset]
+    kwargs = {}
+    if cache is not None or "SDRBENCH_CACHE" in os.environ:
+        kwargs["cache_dir"] = str(cache_dir(cache) / "hf")
     if local_dir is not None:
         kwargs["local_dir"] = str(local_dir)  # real file at <local_dir>/<path>, no cache copy
-    return Path(hf_hub_download(repo_id=repo, filename=f.path, repo_type="dataset", **kwargs))
+    # pinned to the Hugging Face commit the catalog was built from: later syncs cannot change it
+    p = Path(hf_hub_download(repo_id=meta["repo"], filename=f.path, repo_type="dataset",
+                             revision=meta.get("revision"), **kwargs))
+    if not _hf_verified(p, f, local_dir):
+        raise IOError(f"sha256 mismatch for {p} downloaded from {meta['repo']}")
+    return p
 
 
-_archive_locks: dict = {}
-_locks_guard = threading.Lock()
+_thread_locks: dict = {}
+_thread_locks_guard = threading.Lock()
+
+
+@contextmanager
+def _globus_lock(target):
+    """Exclusive lock for unpacking into ``target``: across threads and across processes."""
+    from filelock import FileLock
+
+    key = str(Path(target).resolve())
+    with _thread_locks_guard:
+        tl = _thread_locks.setdefault(key, threading.Lock())
+    Path(key).parent.mkdir(parents=True, exist_ok=True)
+    with tl, FileLock(key + ".lock"):
+        yield
+
+
+def _verified_marker(local: Path) -> Path:
+    return local.with_name(local.name + ".sdrbench-ok")
 
 
 def _download_globus(f: Field, cache) -> Path:
     v = catalog()["datasets"][f.dataset]["variants"][f.variant]
     arch = v["archive"]
     root = cache_dir(cache) / "globus" / f.dataset
+    target = root / v.get("folder", f.variant)
     local = root / f.path
-    with _locks_guard:  # one download/unpack per archive, even with parallel callers
-        lock = _archive_locks.setdefault(arch["url"], threading.Lock())
-    with lock:
-        if not local.exists():
-            fetch_archive(arch["url"], root / v.get("folder", f.variant), expected_md5=arch.get("md5"))
-    if not local.exists():
-        raise FileNotFoundError(f"{f.path} not found in {arch['url']}")
-    if sha256_file(local) != f.sha256:
-        raise IOError(f"sha256 mismatch for {local} (archive on Globus changed?)")
-    return local
+    marker = _verified_marker(local)
+    with _globus_lock(target):  # one download/unpack per archive, even with parallel callers
+        for attempt in range(2):
+            if not local.exists():
+                size = arch.get("bytes") or 0
+                if size > 2e9:
+                    warnings.warn(f"downloading the {size / 1e9:.1f} GB SDRBench archive {arch['url']} "
+                                  f"from Globus to get {f.filename}", stacklevel=4)
+                fetch_archive(arch["url"], target, expected_md5=arch.get("md5"))
+            if not local.exists():
+                raise FileNotFoundError(f"{f.path} not found in {arch['url']}")
+            st = local.stat()
+            stamp = f"{f.sha256} {st.st_size} {st.st_mtime_ns}"
+            if marker.exists() and marker.read_text() == stamp:
+                return local
+            if st.st_size == f.nbytes and sha256_file(local) == f.sha256:
+                marker.write_text(stamp)
+                return local
+            shutil.rmtree(target, ignore_errors=True)  # damaged cache: unpack again once
+        raise IOError(f"sha256 mismatch for {local}: the archive on Globus does not match the catalog")
 
 
 def _place(src: Path, local_dir, f: Field) -> Path:
-    """Put a cached Globus file at <local_dir>/<path> (hard link if possible, else copy)."""
+    """Copy a cached Globus file to <local_dir>/<path> (an independent plain file)."""
     if local_dir is None:
         return src
     dest = Path(local_dir) / f.path
-    if dest.exists() and dest.stat().st_size == f.nbytes:
+    if dest.exists() and dest.stat().st_size == f.nbytes and sha256_file(dest) == f.sha256:
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".partial")
-    tmp.unlink(missing_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=dest.name + ".", suffix=".partial", dir=dest.parent)
+    os.close(fd)
     try:
-        os.link(src, tmp)
-    except OSError:
         shutil.copyfile(src, tmp)
-    os.replace(tmp, dest)
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return dest
 
 
-def _fetch(f: Field, cache, source: str | None, local_dir=None) -> Path:
-    """Hugging Face first; if that fails, the original archive on Globus."""
+_LOCAL_ERRNOS = {errno.ENOSPC, errno.EACCES, errno.EROFS, getattr(errno, "EDQUOT", errno.ENOSPC)}
+
+
+def _fetch(f: Field, cache, source: Optional[str], local_dir=None) -> Path:
+    """Hugging Face first; if the mirror cannot deliver, the original archive on Globus."""
     source = source or os.environ.get("SDRBENCH_SOURCE", "auto")
     if source not in ("auto", "hf", "globus"):
         raise ValueError("source must be 'auto', 'hf' or 'globus'")
@@ -247,9 +334,12 @@ def _fetch(f: Field, cache, source: str | None, local_dir=None) -> Path:
         return _place(_download_globus(f, cache), local_dir, f)
     try:
         return _download_hf(f, cache, local_dir)
-    except Exception as e:  # network error, HF outage, file missing on the mirror, ...
-        if source == "hf":
+    except Exception as e:
+        offline = os.environ.get("HF_HUB_OFFLINE", "").lower() in ("1", "true", "yes")
+        local_problem = isinstance(e, OSError) and e.errno in _LOCAL_ERRNOS  # disk full, permissions
+        if source == "hf" or offline or local_problem:
             raise
-        warnings.warn(f"Hugging Face download of {f.path} failed ({type(e).__name__}: {e}); "
-                      f"falling back to the original SDRBench archive on Globus", stacklevel=3)
+        size = catalog()["datasets"][f.dataset]["variants"][f.variant]["archive"].get("bytes") or 0
+        warnings.warn(f"Hugging Face download of {f.path} failed ({type(e).__name__}: {e}); falling back "
+                      f"to the original SDRBench archive on Globus ({size / 1e9:.1f} GB)", stacklevel=3)
         return _place(_download_globus(f, cache), local_dir, f)

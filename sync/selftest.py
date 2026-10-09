@@ -63,6 +63,21 @@ def property_ranges(ds_name, work):
     return out
 
 
+def _range(x, chunk=1 << 26):
+    """min, max over finite values and the number of non-finite values, in bounded memory."""
+    flat = x.reshape(-1)
+    lo, hi, nbad = math.inf, -math.inf, 0
+    for i in range(0, flat.size, chunk):
+        c = np.asarray(flat[i:i + chunk])
+        if c.dtype.kind == "f":
+            ok = np.isfinite(c)
+            nbad += int(c.size - np.count_nonzero(ok))
+            c = c[ok]
+        if c.size:
+            lo, hi = min(lo, float(c.min())), max(hi, float(c.max()))
+    return (lo if lo != math.inf else math.nan), (hi if hi != -math.inf else math.nan), nbad
+
+
 def check_field(ds, f, work, ranges, plain_max=200e6):
     """Check one file through the public API; returns a result dict (None for derived layouts)."""
     if f.transpose:  # derived layout: checked against its stored file in check_view
@@ -82,15 +97,9 @@ def check_field(ds, f, work, ranges, plain_max=200e6):
                 r["issues"].append(f"ds[{f.name!r}] returned {x.dtype} {x.shape}")
             if sha256_file(api.field(f.name).download(cache=cache)) != f.sha256:  # file behind the array
                 r["issues"].append("sha256 mismatch")
-            if x.dtype.kind == "f":
-                finite = np.isfinite(x)
-                nbad = int(x.size - np.count_nonzero(finite))
-                if nbad:
-                    r["nonfinite"] = nbad
-                xs = x[finite] if nbad else x
-            else:
-                xs = x
-            lo, hi = (float(xs.min()), float(xs.max())) if xs.size else (math.nan, math.nan)
+            lo, hi, nbad = _range(x)
+            if nbad:
+                r["nonfinite"] = nbad
             r["min"], r["max"] = lo, hi
             exp = ranges.get(f.filename)
             if exp:
@@ -99,7 +108,7 @@ def check_field(ds, f, work, ranges, plain_max=200e6):
                     r["property_checked"] = True
                 else:
                     r["issues"].append(f"min/max {lo:.6g}/{hi:.6g} != property file {sorted(exp)}")
-            del x, xs
+            del x
     except Exception as e:  # report and keep going
         r["issues"].append(f"{type(e).__name__}: {e}")
     finally:
@@ -118,6 +127,10 @@ def check_view(ds, f, work):
         for g in b.files:
             if g.path == f.path and not g.transpose:
                 base = g
+    if base is None:
+        r["issues"].append("stored file of the derived layout not found in any variant")
+        r["ok"] = False
+        return r
     cache = work / f"cache-view-{ds.name}-{ds.variant}"
     try:
         x = sdrbench.dataset(ds.name, ds.variant, cache=cache)[f.name]

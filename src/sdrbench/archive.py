@@ -12,9 +12,11 @@ import os
 import shutil
 import tarfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+from typing import Optional, Tuple
 
 CHUNK = 1 << 22
 JUNK = ("._", ".DS_Store", "__MACOSX")
@@ -53,48 +55,63 @@ class _HashingReader:
 
 class _ResumingResponse:
     """Readable HTTP body that reconnects with a Range request when the connection drops,
-    so multi-GB downloads survive transient network failures."""
+    so multi-GB downloads survive transient network failures.
+
+    The full size must be known (Globus sends GET bodies chunked, without Content-Length, so it
+    comes from HEAD); without it a dropped connection cannot be told apart from the end of the
+    file, so we refuse to download instead of risking a silently truncated archive."""
 
     def __init__(self, url: str, retries: int = 10, timeout: float = 120):
         self.url, self.retries, self.timeout = url, retries, timeout
         self.pos = 0
-        self.total = self._head_length()  # expected body length (GET bodies may be chunked)
+        self.total = self._head_length()
         self.resp = self._connect()
 
-    def _head_length(self):
-        req = urllib.request.Request(self.url, method="HEAD", headers={"User-Agent": "sdrbench"})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                n = r.headers.get("Content-Length")
-                return int(n) if n is not None else None
-        except (OSError, http.client.HTTPException, ValueError):
-            return None
+    def _head_length(self) -> int:
+        last = None
+        for attempt in range(self.retries + 1):
+            req = urllib.request.Request(self.url, method="HEAD", headers={"User-Agent": "sdrbench"})
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    n = r.headers.get("Content-Length")
+                    if n is not None:
+                        return int(n)
+                    last = "no Content-Length in HEAD response"
+            except urllib.error.HTTPError as e:
+                if e.code not in (429, 502, 503, 504):  # only temporary server errors are retried
+                    raise
+                last = e
+            except (OSError, http.client.HTTPException, ValueError) as e:
+                last = e
+            time.sleep(min(60, 2 ** attempt))
+        raise IOError(f"{self.url}: cannot determine the archive size ({last}); refusing an unverifiable download")
 
     def _connect(self):
         headers = {"User-Agent": "sdrbench"}
         if self.pos:
             headers["Range"] = f"bytes={self.pos}-"
         resp = urllib.request.urlopen(urllib.request.Request(self.url, headers=headers), timeout=self.timeout)
-        if self.pos and resp.status != 206:
-            resp.close()
-            raise IOError(f"{self.url}: server ignored the Range request, cannot resume")
-        length = resp.headers.get("Content-Length")
-        if self.total is None and length is not None:
-            self.total = int(length)
+        if self.pos:
+            rng = resp.headers.get("Content-Range", "")
+            if resp.status != 206 or not rng.startswith(f"bytes {self.pos}-"):
+                resp.close()
+                raise IOError(f"{self.url}: server did not resume at byte {self.pos} ({resp.status} {rng!r})")
         return resp
 
     def read(self, n: int = -1) -> bytes:
         for attempt in range(self.retries + 1):
             try:
                 b = self.resp.read(n)
-                if not b and n != 0 and self.total is not None and self.pos < self.total:
-                    # the body ended early: a dropped connection (with chunked encoding this can
-                    # look like a clean end of stream)
+                if not b and n != 0 and self.pos < self.total:
+                    # body ended early: a dropped connection (with chunked encoding this can look
+                    # like a clean end of stream)
                     raise http.client.IncompleteRead(b"", self.total - self.pos)
                 self.pos += len(b)
+                if self.pos > self.total:
+                    raise IOError(f"{self.url}: received more than the {self.total} bytes announced")
                 return b
-            except (OSError, http.client.HTTPException):
-                if attempt == self.retries:
+            except (OSError, http.client.HTTPException) as e:
+                if isinstance(e, IOError) and "announced" in str(e) or attempt == self.retries:
                     raise
                 time.sleep(min(60, 2 ** attempt))
                 try:
@@ -105,7 +122,7 @@ class _ResumingResponse:
                     self.resp = self._connect()
                 except (OSError, http.client.HTTPException):
                     continue  # try again on the next attempt
-        return b""
+        raise IOError(f"{self.url}: download failed at byte {self.pos} of {self.total}")
 
     def close(self):
         self.resp.close()
@@ -156,39 +173,47 @@ def _extract_zip(path: Path, root: Path) -> None:
                 shutil.copyfileobj(src, out, CHUNK)
 
 
-def fetch_archive(url: str, dest, expected_md5: str | None = None) -> tuple[str, int]:
+def fetch_archive(url: str, dest, expected_md5: Optional[str] = None) -> Tuple[str, int]:
     """Stream ``url`` (a .tar.gz or .zip) into directory ``dest``.
 
-    If the archive holds a single top-level directory, its contents are placed
-    directly in ``dest``. File contents are never modified.
+    If all files of the archive live under a single top-level directory, its contents are
+    placed directly in ``dest`` (the same rule the Hugging Face mirror uses). File contents
+    are never modified. The whole archive must arrive: its size is checked against the
+    server's, and its md5 against ``expected_md5`` when given.
     Returns ``(md5 of the archive, archive size in bytes)``.
     """
+    import tempfile
+
     dest = Path(dest)
-    tmp = dest.parent / (dest.name + ".partial")
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.mkdir(parents=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=dest.name + ".", suffix=".partial", dir=dest.parent))
     try:
         with _open_url(url) as resp:
             reader = _HashingReader(resp)
             if url.endswith(".zip"):
-                zpath = tmp.parent / (dest.name + ".zip.partial")
+                zpath = tmp / "_archive.zip"
                 with open(zpath, "wb") as out:
                     shutil.copyfileobj(reader, out, CHUNK)
-                try:
-                    _extract_zip(zpath, tmp)
-                finally:
-                    zpath.unlink(missing_ok=True)
+                files = tmp / "files"
+                _extract_zip(zpath, files)
+                zpath.unlink()
             else:
-                _extract_tar_stream(reader, tmp)
+                files = tmp / "files"
+                files.mkdir()
+                _extract_tar_stream(reader, files)
                 reader.drain()
+            total = getattr(resp, "total", None)
+        if total is not None and reader.nbytes != total:
+            raise IOError(f"{url}: got {reader.nbytes} of {total} bytes")
         md5 = reader.md5.hexdigest()
         if expected_md5 and md5 != expected_md5:
             raise IOError(f"md5 mismatch for {url}: got {md5}, expected {expected_md5}")
-        kids = list(tmp.iterdir())
-        src = kids[0] if len(kids) == 1 and kids[0].is_dir() else tmp
+        tops = {p.relative_to(files).parts[0] for p in files.rglob("*") if p.is_file()}
+        nested = {p.relative_to(files).parts[0] for p in files.rglob("*") if p.is_file()
+                  and len(p.relative_to(files).parts) > 1}
+        src = files / next(iter(tops)) if len(tops) == 1 and tops == nested else files
         shutil.rmtree(dest, ignore_errors=True)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(dest))
+        os.replace(src, dest)
         return md5, reader.nbytes
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -1,0 +1,15 @@
+{
+ "basilisk-turbulence": "518b341f53713fd6ec551b295164bf690f4da44f",
+ "cesm-atm": "cb3cd3aef008d4834903dc7aaba24207ca6876a8",
+ "exaalt": "fdd63c3e68af5a9243c8b954aac0b0a3b0736ad0",
+ "exafel": "484ab4c6a935c25c8f5ad09854d71c6c1316912c",
+ "hacc": "36891dee003a1aa08bb7da3c3e6b90badcd661e6",
+ "hurricane-isabel": "212031b7dc82258bc10890ee35fa66b29ab01071",
+ "miranda": "cd543db67fcb47de3c645312f2db9a27198a9af7",
+ "nwchem": "f657d8be5aa99a0e0147f0f974c3e040fd0e8cbe",
+ "nyx": "e6ce03914098d6dcdf160cb3fe567e7c784c6edf",
+ "qmcpack": "9e249de7ffc01865e319710e3993e84bf0bf1833",
+ "s3d": "e1229e5a4606482948fd3e8272a1dd1ab645dc7e",
+ "scale-letkf": "18665ddfb989801761218b81e665072f998a23ff",
+ "xgc": "f2518596a116a47c2e439417e17f4d9458012ccb"
+}

@@ -34,6 +34,7 @@ from sdrbench.archive import fetch_archive, sha256_file  # noqa: E402
 
 DATASETS = HERE / "datasets.json"
 STATE = HERE / "state.json"
+REVISIONS = HERE / "revisions.json"
 CATALOG = ROOT / "src" / "sdrbench" / "catalog.json"
 ORG = os.environ.get("SDRBENCH_HF_ORG", "sdrbench")
 ARCHIVE_RE = re.compile(r'href="([^"]+\.(?:tar\.gz|tgz|zip|bp))"')
@@ -74,6 +75,8 @@ def http_head(url):
                     "etag": h.get("ETag"), "last_modified": h.get("Last-Modified")}
     except urllib.error.HTTPError as e:
         return {"status": e.code}
+    except (urllib.error.URLError, OSError) as e:  # DNS, timeouts, resets
+        return {"status": f"network error: {e}"}
 
 
 def page_links(page_html, base):
@@ -200,7 +203,8 @@ def _commit(api, repo, ops, message):
     raise RuntimeError(f"commit to {repo} failed")
 
 
-def stream_mirror(api, repo, variant, url, scratch, batch_bytes=8e9, flatten=True):
+def stream_mirror(api, repo, variant, url, scratch, batch_bytes=8e9, flatten=True, expected_bytes=None,
+                  max_delete_fraction=0.25):
     """Mirror one archive into <repo>/<variant>/ without unpacking it all: each member is
     written to a temp file, hashed, and committed in batches, then deleted. Files that are no
     longer in the archive are removed from the repo. Returns (files, md5, archive bytes).
@@ -239,12 +243,21 @@ def stream_mirror(api, repo, variant, url, scratch, batch_bytes=8e9, flatten=Tru
         gen.close()
         shutil.rmtree(scratch, ignore_errors=True)
         log("   archive has several top-level entries; restarting without flattening")
-        return stream_mirror(api, repo, variant, url, scratch, batch_bytes, flatten=False)
+        return stream_mirror(api, repo, variant, url, scratch, batch_bytes, flatten=False,
+                             expected_bytes=expected_bytes, max_delete_fraction=max_delete_fraction)
+    # Never delete anything unless the whole archive arrived (a truncated stream can end
+    # silently at a tar member boundary), and never delete a large part of a variant blindly.
+    if expected_bytes is not None and nbytes != expected_bytes:
+        raise IOError(f"{url}: read {nbytes} of {expected_bytes} bytes; nothing deleted")
     if api:
         new = {f["path"] for f in files}
         old = [p for p in api.list_repo_files(repo, repo_type="dataset") if p.startswith(variant + "/")]
+        stale = [p for p in old if p not in new]
+        if old and len(stale) > max_delete_fraction * len(old):
+            raise IOError(f"{repo}/{variant}: the new archive would delete {len(stale)} of {len(old)} files; "
+                          f"refusing (re-run with --allow-delete if this is intended)")
         ops = [CommitOperationAdd(p, str(t)) for p, t in batch]
-        ops += [CommitOperationDelete(p) for p in old if p not in new]
+        ops += [CommitOperationDelete(p) for p in stale]
         if ops:
             _commit(api, repo, ops, f"Sync {variant} from SDRBench ({len(files)} files)")
     for _, t in batch:
@@ -287,7 +300,12 @@ def cmd_mirror(a):
             api.create_repo(f"{ORG}/{dataset}", repo_type="dataset", exist_ok=True)
         log(f"== {dataset}/{variant} <- {url} ({head['bytes']/1e9:.2f}GB, {shutil.disk_usage(work).free/1e9:.0f}GB free)")
         t0 = time.time()
-        files, md5, n = stream_mirror(api, f"{ORG}/{dataset}", variant, url, work / "scratch")
+        files, md5, n = stream_mirror(api, f"{ORG}/{dataset}", variant, url, work / "scratch",
+                                      expected_bytes=head["bytes"],
+                                      max_delete_fraction=1.0 if a.allow_delete else 0.25)
+        old = state.get(rel)
+        if old and old.get("md5") and old["md5"] != md5 and (old.get("etag"), old.get("bytes")) == (head.get("etag"), n):
+            raise IOError(f"{rel}: md5 changed although size and ETag did not; investigate before syncing")
         log(f"   {len(files)} files, archive md5 {md5}, {time.time() - t0:.0f}s")
         out_state[rel] = {"dataset": dataset, "variant": variant, "url": url, "bytes": n, "md5": md5,
                           "etag": head.get("etag"), "last_modified": head.get("last_modified"),
@@ -330,7 +348,7 @@ def cmd_plan(a):
 
 
 # ---------------------------------------------------------------- catalog
-ITEMSIZE = {"<f4": 4, "<f8": 8, "<i4": 4, "<i8": 8, "<u1": 1, "<u2": 2, "<u8": 8}
+ITEMSIZE = {"<f4": 4, "<f8": 8, "<i1": 1, "<i2": 2, "<i4": 4, "<i8": 8, "<u1": 1, "<u2": 2, "<u4": 4, "<u8": 8}
 
 
 class CatalogError(ValueError):
@@ -382,6 +400,8 @@ def file_entry(dataset, variant, f, rules):
         raise CatalogError(f"{dataset}/{f['path']}: no dtype/shape rule (add one to sync/datasets.json)")
     if r.get("dtype") is None:
         return None, None, None
+    if r["dtype"] not in ITEMSIZE:
+        raise CatalogError(f"{dataset}/{f['path']}: unsupported dtype {r['dtype']!r}")
     item = ITEMSIZE[r["dtype"]]
     shape = r["shape"]
     if shape == "1d":
@@ -393,12 +413,17 @@ def file_entry(dataset, variant, f, rules):
     return r["dtype"], list(shape), field_name(rel, r)
 
 
-def build_catalog(c, state, strict=True):
+def build_catalog(c, state, strict=True, revisions=None):
+    """Catalog from datasets.json rules + state.json; ``revisions`` pins each dataset to the
+    Hugging Face commit it was built from (sync/revisions.json)."""
+    revisions = revisions if revisions is not None else load_json(REVISIONS, {})
     out = {"schema": 1, "org": ORG, "globus_base": c["globus_base"], "page": c["page"], "datasets": {}}
     errors = []
     for d, ds in c["datasets"].items():
         entry = {k: ds[k] for k in ("title", "description", "source", "acknowledgment", "citation_extra") if k in ds}
         entry["repo"] = f"{ORG}/{d}"
+        if revisions.get(d):
+            entry["revision"] = revisions[d]
         entry["variants"] = {}
         for v, vv in ds["variants"].items():
             if "view_of" in vv:
@@ -447,7 +472,21 @@ def build_catalog(c, state, strict=True):
     return out, errors
 
 
+def fetch_revisions(c):
+    """Current Hugging Face commit of every mirrored dataset repo."""
+    from huggingface_hub import HfApi
+    api, revs = HfApi(), {}
+    for d in c["datasets"]:
+        try:
+            revs[d] = api.dataset_info(f"{ORG}/{d}").sha
+        except Exception as e:  # repo not created yet
+            log(f"no revision for {ORG}/{d}: {type(e).__name__}")
+    return revs
+
+
 def cmd_catalog(a):
+    if not getattr(a, "offline", False):
+        save_json(REVISIONS, fetch_revisions(cfg()))
     cat, errors = build_catalog(cfg(), load_json(STATE, {}), strict=not getattr(a, "lenient", False))
     for e in errors:
         log("RULE ERROR", e)
@@ -655,13 +694,10 @@ PROP_RE = re.compile(r"The property of (\S+?)\s*:\s*.*?The first 10 values are:\
 
 
 def read_range(repo, path, start, length):
-    from huggingface_hub import hf_hub_url
-    from huggingface_hub.utils import build_hf_headers
-    url = hf_hub_url(repo, path, repo_type="dataset")
-    req = urllib.request.Request(url, headers={**build_hf_headers(),
-                                               "Range": f"bytes={start}-{start + length - 1}"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        data = r.read()
+    from huggingface_hub import HfFileSystem
+    with HfFileSystem().open(f"datasets/{repo}/{path}", "rb", block_size=0) as fh:
+        fh.seek(start)
+        data = fh.read(length)
     if len(data) != length:
         raise IOError(f"range read of {path} returned {len(data)} bytes, wanted {length}")
     return data
@@ -798,9 +834,11 @@ def main(argv=None):
     s.add_argument("--dry", action="store_true", help="download and hash, but do not upload")
     s.add_argument("--fail-on-skip", action="store_true")
     s.add_argument("--state-out", help="write state of mirrored archives to this file instead of state.json")
+    s.add_argument("--allow-delete", action="store_true", help="allow removing >25%% of a variant's files")
     s = sub.add_parser("merge"); s.add_argument("fragments", nargs="+")
     s = sub.add_parser("plan"); s.add_argument("check"); s.add_argument("--extra", nargs="*")
     s = sub.add_parser("catalog"); s.add_argument("--lenient", action="store_true", help="report rule errors instead of failing")
+    s.add_argument("--offline", action="store_true", help="keep sync/revisions.json instead of asking Hugging Face")
     s = sub.add_parser("cards"); s.add_argument("--only", nargs="*"); s.add_argument("--dry", action="store_true"); s.add_argument("--outdir")
     s = sub.add_parser("verify"); s.add_argument("--only", nargs="*"); s.add_argument("--all", action="store_true")
     s = sub.add_parser("import"); s.add_argument("dir")

@@ -18,7 +18,7 @@ classifiers = [
   "Topic :: Scientific/Engineering",
   "Operating System :: OS Independent",
 ]
-dependencies = ["numpy>=1.21", "huggingface_hub>=0.23"]
+dependencies = ["numpy>=1.21", "huggingface_hub>=0.23", "filelock>=3.8"]
 
 [project.optional-dependencies]
 sz3 = ["pysz>=1.1"]

@@ -67,6 +67,11 @@ def test_download_resumes_after_connection_drop(tmp_path):
     hits = []
 
     class H(http.server.BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(blob)))
+            self.end_headers()
+
         def do_GET(self):
             rng = self.headers.get("Range")
             start = int(rng.split("=")[1].rstrip("-")) if rng else 0
@@ -74,6 +79,8 @@ def test_download_resumes_after_connection_drop(tmp_path):
             body = blob[start:]
             self.send_response(206 if rng else 200)
             self.send_header("Content-Length", str(len(body)))
+            if rng:
+                self.send_header("Content-Range", f"bytes {start}-{len(blob) - 1}/{len(blob)}")
             self.end_headers()
             if len(hits) == 1:  # first request: send part of the body, then drop the connection
                 self.wfile.write(body[: len(body) // 3])
@@ -120,6 +127,8 @@ def test_resume_with_chunked_encoding_and_clean_close(tmp_path):
             gets.append(start)
             body = blob[start:] if len(gets) > 1 else blob[start:len(blob) // 2]
             self.send_response(206 if rng else 200)
+            if rng:
+                self.send_header("Content-Range", f"bytes {start}-{len(blob) - 1}/{len(blob)}")
             self.send_header("Transfer-Encoding", "chunked")
             self.send_header("Connection", "close")
             self.end_headers()
@@ -141,3 +150,64 @@ def test_resume_with_chunked_encoding_and_clean_close(tmp_path):
         srv.shutdown()
     assert got == md5 and n == len(blob) and gets[0] == 0 and 0 < gets[1] <= len(blob) // 2  # resumed mid-file
     assert (tmp_path / "out" / "big.f32").read_bytes() == bytes(range(256)) * 8000
+
+
+def _serve(handler):
+    import http.server
+    import threading
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_refuses_download_when_size_unknown(tmp_path):
+    """No HEAD Content-Length + chunked GET: truncation would be undetectable -> refuse."""
+    import http.server
+    from conftest import make_tar
+    make_tar(tmp_path / "x.tar.gz", {"a.f32": b"1" * 100})
+    blob = (tmp_path / "x.tar.gz").read_bytes()
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(404); self.end_headers()
+
+        def do_GET(self):
+            self.send_response(200); self.send_header("Content-Length", str(len(blob))); self.end_headers()
+            self.wfile.write(blob)
+
+        def log_message(self, *a):
+            pass
+    srv = _serve(H)
+    try:
+        with pytest.raises(Exception):
+            fetch_archive(f"http://127.0.0.1:{srv.server_port}/x.tar.gz", tmp_path / "out")
+    finally:
+        srv.shutdown()
+    assert not (tmp_path / "out").exists()
+
+
+def test_flatten_ignores_empty_directories(tmp_path):
+    """Same rule as the mirror: only files decide whether the top-level folder is dropped."""
+    path = tmp_path / "e.tar.gz"
+    with tarfile.open(path, "w:gz") as tf:
+        ti = tarfile.TarInfo("TOP/a.f32"); ti.size = 4
+        tf.addfile(ti, io.BytesIO(b"abcd"))
+        d = tarfile.TarInfo("EMPTY"); d.type = tarfile.DIRTYPE
+        tf.addfile(d)
+    fetch_archive(path.as_uri(), tmp_path / "out")
+    assert (tmp_path / "out" / "a.f32").exists()
+
+
+def test_concurrent_processes_same_archive(tmp_path):
+    """Two processes unpacking the same archive into one cache must not clobber each other."""
+    import subprocess
+    import sys
+    from conftest import make_tar
+    members = {f"f{i:03d}.f32": bytes([i % 256]) * 20000 for i in range(80)}
+    make_tar(tmp_path / "m.tar.gz", members)
+    code = ("import sys; from sdrbench.core import _globus_lock; from sdrbench.archive import fetch_archive\n"
+            "with _globus_lock(sys.argv[2]):\n fetch_archive(sys.argv[1], sys.argv[2])")
+    procs = [subprocess.Popen([sys.executable, "-c", code, (tmp_path / "m.tar.gz").as_uri(), str(tmp_path / "out")])
+             for _ in range(3)]
+    assert all(p.wait() == 0 for p in procs)
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == sorted(members)
