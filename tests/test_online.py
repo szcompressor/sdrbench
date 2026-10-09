@@ -28,7 +28,7 @@ def test_globus_and_hf_give_identical_bytes(tmp_path):
 
 
 def test_multidimensional_c_order(tmp_path):
-    x = sdrbench.load("exaalt", "dataset1.x", variant="copper", cache=tmp_path)
+    x = sdrbench.load("exaalt", "x", variant="copper-1", cache=tmp_path)
     assert x.shape == (5423, 3137)
     # atoms move little between consecutive time steps (axis 0) -> C order, time slowest
     assert np.abs(np.diff(x[:50], axis=0)).mean() < np.abs(np.diff(x[:50], axis=1)).mean()

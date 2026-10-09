@@ -1,5 +1,4 @@
 {
- "_comment": "Curated description of every mirrored SDRBench dataset. 'archive' is relative to globus_base. 'rules' map file globs (matched against the file name or its path inside the variant) to a numpy dtype and a C-order shape (slowest dimension first, as in the SZ3 CI dataset table); shape \"1d\" means a flat array. Every non-text file must match a rule and its size must equal prod(shape)*itemsize, or the catalog build fails. A rule with dtype null marks a non-array file (HDF5, ADIOS .bp, ...). Variant keys are the folder names on Hugging Face; 'name' is the variant name used in the Python API (the first variant listed is the default).",
  "globus_base": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/",
  "page": "https://sdrbench.github.io/datasets.html",
  "excluded": {
@@ -7,43 +6,52 @@
   "brown_synth/SDRBENCH-BROWN-33554433.tar.gz": "not mirrored",
   "EXASKY/HACC/multi-timesteps/4507.tar.gz": "broken link on Globus (HTTP 404)"
  },
+ "_comment": "Curated description of every mirrored SDRBench dataset. Each variant (keyed by its Python API name; the first is the default) names its Hugging Face 'folder', its Globus 'archive' (relative to globus_base) and optionally 'select' / 'exclude', globs choosing which of the archive's files it uses. 'rules' map file globs (first match wins) to a numpy dtype and a C-order shape (slowest first; \"1d\" = flat); 'pattern' is a regex on the file path inside the folder whose groups fill the 'var' (physical variable) and 'step' (time step / slab) templates; 'components' splits axis 0 of each file into one field per listed variable (zero-copy views). A rule with dtype null marks a non-array file. 'view_of' + 'transpose' define a derived layout computed on load. 'description' is science prose only: counts, shapes and names are generated. Every non-text file must match a rule with a matching size, or the catalog build fails.",
  "datasets": {
   "cesm-atm": {
    "title": "CESM-ATM",
-   "description": "Climate simulation (Community Earth System Model, atmosphere component). 79 2D fields of 1800x3600, plus one 3D field of 26x1800x3600; single precision. The 'cleared' variant zeroes all background data.",
    "source": "Mark Taylor (SNL)",
    "globus_dir": "CESM-ATM",
+   "description": "Climate simulation with the Community Earth System Model (CESM), atmosphere component (CAM). Single precision.",
    "variants": {
-    "1800x3600": {
+    "2d": {
+     "folder": "1800x3600",
      "archive": "CESM-ATM/SDRBENCH-CESM-ATM-1800x3600.tar.gz",
+     "description": "2D fields of one time step on a 1800 x 3600 latitude-longitude grid.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "*_1_1800_3600.f32",
        "dtype": "<f4",
        "shape": [
         1800,
         3600
-       ]
+       ],
+       "pattern": "(.+)_1_1800_3600\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "2d"
+     ]
     },
-    "cleared-1800x3600": {
+    "2d-cleared": {
+     "folder": "cleared-1800x3600",
      "archive": "CESM-ATM/SDRBENCH-CESM-ATM-cleared-1800x3600.tar.gz",
+     "description": "The 2D fields with all background (fill) values set to 0.",
      "rules": [
       {
-       "glob": "*.dat",
+       "glob": "*_1_1800_3600.dat",
        "dtype": "<f4",
        "shape": [
         1800,
         3600
-       ]
+       ],
+       "pattern": "(.+)_1_1800_3600\\.dat",
+       "var": "{0}"
       }
-     ],
-     "name": "2d-cleared"
+     ]
     },
-    "26x1800x3600": {
+    "3d": {
+     "folder": "26x1800x3600",
      "archive": "CESM-ATM/SDRBENCH-CESM-ATM-26x1800x3600.tar.gz",
+     "description": "3D fields: 26 vertical levels of 1800 x 3600.",
      "rules": [
       {
        "glob": "*_1_26_1800_3600.f32",
@@ -52,34 +60,39 @@
         26,
         1800,
         3600
-       ]
+       ],
+       "pattern": "(.+)_1_26_1800_3600\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "3d"
+     ]
     }
    }
   },
   "exaalt": {
    "title": "EXAALT",
-   "description": "Molecular dynamics simulation. Particle fields (x, y, z, vx, vy, vz) stored separately; single precision, little-endian.",
    "source": "EXAALT team (ECP)",
    "globus_dir": "EXAALT",
+   "description": "Molecular dynamics simulation (EXAALT, ECP): atom positions (and velocities for 'small'). Single precision, little-endian.",
    "variants": {
-    "2869440": {
+    "small": {
+     "folder": "2869440",
      "archive": "EXAALT/SDRBENCH-EXAALT-2869440.tar.gz",
+     "description": "One snapshot of 2,869,440 atoms: positions xx, yy, zz and velocities vx, vy, vz.",
      "rules": [
       {
        "glob": "*.f32",
        "dtype": "<f4",
-       "shape": [
-        2869440
-       ]
+       "shape": "1d",
+       "pattern": "(\\w+)\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "small"
+     ]
     },
-    "copper": {
+    "copper-1": {
+     "folder": "copper",
      "archive": "EXAALT/SDRBENCH-EXAALT-copper.tar.gz",
+     "select": "dataset1-*",
+     "description": "Copper system, trajectory 1: positions x, y, z of 3137 atoms over 5423 time steps (time x atom).",
      "rules": [
       {
        "glob": "dataset1-5423x3137.*.f32.dat",
@@ -88,9 +101,17 @@
         5423,
         3137
        ],
-       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
-       "name": "{0}.{1}"
-      },
+       "pattern": "dataset1-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "var": "{0}"
+      }
+     ]
+    },
+    "copper-2": {
+     "folder": "copper",
+     "archive": "EXAALT/SDRBENCH-EXAALT-copper.tar.gz",
+     "select": "dataset2-*",
+     "description": "Copper system, trajectory 2: positions x, y, z of 1077290 atoms over 83 time steps (time x atom).",
+     "rules": [
       {
        "glob": "dataset2-83x1077290.*.f32.dat",
        "dtype": "<f4",
@@ -98,14 +119,16 @@
         83,
         1077290
        ],
-       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
-       "name": "{0}.{1}"
+       "pattern": "dataset2-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "var": "{0}"
       }
-     ],
-     "name": "copper"
+     ]
     },
-    "helium": {
+    "helium-1": {
+     "folder": "helium",
      "archive": "EXAALT/SDRBENCH-EXAALT-helium.tar.gz",
+     "select": "dataset1-*",
+     "description": "Helium system, trajectory 1: positions x, y, z of 1037 atoms over 7852 time steps (time x atom).",
      "rules": [
       {
        "glob": "dataset1-7852x1037.*.f32.dat",
@@ -114,9 +137,17 @@
         7852,
         1037
        ],
-       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
-       "name": "{0}.{1}"
-      },
+       "pattern": "dataset1-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "var": "{0}"
+      }
+     ]
+    },
+    "helium-2": {
+     "folder": "helium",
+     "archive": "EXAALT/SDRBENCH-EXAALT-helium.tar.gz",
+     "select": "dataset2-*",
+     "description": "Helium system, trajectory 2: positions x, y, z of 106711 atoms over 2338 time steps (time x atom).",
+     "rules": [
       {
        "glob": "dataset2-2338x106711.*.f32.dat",
        "dtype": "<f4",
@@ -124,340 +155,424 @@
         2338,
         106711
        ],
-       "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
-       "name": "{0}.{1}"
+       "pattern": "dataset2-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
+       "var": "{0}"
       }
-     ],
-     "name": "helium"
+     ]
     }
    }
   },
   "hurricane-isabel": {
    "title": "Hurricane ISABEL",
-   "description": "Weather simulation of Hurricane Isabel (WRF model), 13 fields of 100x500x500, single precision. Per-field archives hold 48 time steps; *_log10 variants are log10-transformed fields; 'cleared' fields replace the background by 0.",
    "source": "NCAR; released for the IEEE Visualization 2004 Contest (http://vis.computer.org/vis2004contest/data.html)",
    "acknowledgment": "Hurricane Isabel data produced by the Weather Research and Forecast (WRF) model, courtesy of NCAR, and the U.S. National Science Foundation (NSF).",
    "globus_dir": "Hurricane-ISABEL",
+   "description": "Hurricane Isabel (September 2003) simulated with the WRF weather model: 100 x 500 x 500 grid (z, y, x), 48 hourly time steps, single precision. Some fields also come log10-transformed.",
    "variants": {
-    "100x500x500": {
+    "snapshot": {
+     "folder": "100x500x500",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz",
+     "description": "All 13 variables at time step 48, plus 7 log10-transformed ones.",
      "rules": [
       {
-       "glob": "*.log10.bin.f32",
+       "glob": "*f48.log10.bin.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.log10\\.bin\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(\\w+)f48\\.log10\\.bin\\.f32",
+       "var": "{0}_log10"
       },
       {
-       "glob": "*.bin.f32",
+       "glob": "*f48.bin.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(\\w+)f48\\.bin\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "snapshot"
+     ]
     },
-    "CLOUDf": {
+    "CLOUD": {
+     "folder": "CLOUDf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUDf.tar.gz",
+     "description": "CLOUD at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "CLOUDf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(CLOUD)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "CLOUD"
+     ]
     },
-    "PRECIPf": {
+    "PRECIP": {
+     "folder": "PRECIPf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-PRECIPf.tar.gz",
+     "description": "PRECIP at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "PRECIPf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(PRECIP)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "PRECIP"
+     ]
     },
-    "Pf": {
+    "P": {
+     "folder": "Pf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Pf.tar.gz",
+     "description": "P at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "Pf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(P)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "P"
+     ]
     },
-    "QCLOUDf": {
+    "QCLOUD": {
+     "folder": "QCLOUDf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz",
+     "select": "QCLOUDf*",
+     "description": "QCLOUD at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "QCLOUDf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(QCLOUD)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "note": "This SDRBench archive also contains the QGRAUPf01-48 fields (there is no separate QGRAUPf archive).",
-     "name": "QCLOUD"
+     ]
     },
-    "QICEf": {
+    "QGRAUP": {
+     "folder": "QCLOUDf",
+     "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz",
+     "select": "QGRAUPf*",
+     "description": "QGRAUP at all 48 time steps. Stored in the SDRBench QCLOUDf archive (there is no separate QGRAUPf archive).",
+     "rules": [
+      {
+       "glob": "QGRAUPf*.f32",
+       "dtype": "<f4",
+       "shape": [
+        100,
+        500,
+        500
+       ],
+       "pattern": "(QGRAUP)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
+      }
+     ]
+    },
+    "QICE": {
+     "folder": "QICEf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICEf.tar.gz",
+     "description": "QICE at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "QICEf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(QICE)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "QICE"
+     ]
     },
-    "QRAINf": {
+    "QRAIN": {
+     "folder": "QRAINf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAINf.tar.gz",
+     "description": "QRAIN at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "QRAINf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(QRAIN)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "QRAIN"
+     ]
     },
-    "QSNOWf": {
+    "QSNOW": {
+     "folder": "QSNOWf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOWf.tar.gz",
+     "description": "QSNOW at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "QSNOWf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(QSNOW)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "QSNOW"
+     ]
     },
-    "QVAPORf": {
+    "QVAPOR": {
+     "folder": "QVAPORf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QVAPORf.tar.gz",
+     "description": "QVAPOR at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "QVAPORf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(QVAPOR)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "QVAPOR"
+     ]
     },
-    "TCf": {
+    "TC": {
+     "folder": "TCf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-TCf.tar.gz",
+     "description": "TC at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "TCf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(TC)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "TC"
+     ]
     },
-    "Uf": {
+    "U": {
+     "folder": "Uf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Uf.tar.gz",
+     "description": "U at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "Uf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(U)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "U"
+     ]
     },
-    "Vf": {
+    "V": {
+     "folder": "Vf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Vf.tar.gz",
+     "description": "V at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "Vf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(V)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "V"
+     ]
     },
-    "Wf": {
+    "W": {
+     "folder": "Wf",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Wf.tar.gz",
+     "description": "W at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.f32",
+       "glob": "Wf*.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
-       ]
+       ],
+       "pattern": "(W)f(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
-     ],
-     "name": "W"
+     ]
     },
     "CLOUD_log10": {
+     "folder": "CLOUD_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUD_log10.tar.gz",
+     "description": "log10 of CLOUD at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "CLOUDf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(CLOUD)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "CLOUD-log10"
+     ]
     },
     "QCLOUD_log10": {
+     "folder": "QCLOUD_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUD_log10.tar.gz",
+     "description": "log10 of QCLOUD at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "QCLOUDf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(QCLOUD)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "QCLOUD-log10"
+     ]
     },
     "QGRAUP_log10": {
+     "folder": "QGRAUP_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QGRAUP_log10.tar.gz",
+     "description": "log10 of QGRAUP at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "QGRAUPf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(QGRAUP)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "QGRAUP-log10"
+     ]
     },
     "QICE_log10": {
+     "folder": "QICE_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICE_log10.tar.gz",
+     "description": "log10 of QICE at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "QICEf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(QICE)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "QICE-log10"
+     ]
     },
     "QRAIN_log10": {
+     "folder": "QRAIN_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAIN_log10.tar.gz",
+     "description": "log10 of QRAIN at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "QRAINf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(QRAIN)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "QRAIN-log10"
+     ]
     },
     "QSNOW_log10": {
+     "folder": "QSNOW_log10",
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOW_log10.tar.gz",
+     "description": "log10 of QSNOW at all 48 time steps.",
      "rules": [
       {
-       "glob": "*.bin.log10.f32",
+       "glob": "QSNOWf*.bin.log10.f32",
        "dtype": "<f4",
        "shape": [
         100,
         500,
         500
        ],
-       "pattern": "(\\w+)\\.bin\\.log10\\.f32",
-       "name": "{0}.log10"
+       "pattern": "(QSNOW)f(\\d+)\\.bin\\.log10\\.f32",
+       "var": "{0}_log10",
+       "step": "{1}"
       }
-     ],
-     "name": "QSNOW-log10"
+     ]
     }
    }
   },
   "exafel": {
    "title": "EXAFEL",
-   "description": "Images from the LCLS instrument (X-ray free-electron laser); single precision, HDF5 and binary.",
    "source": "LCLS (SLAC)",
    "globus_dir": "EXAFEL",
+   "description": "X-ray free-electron laser images from the LCLS instrument (SLAC): events x detector panels x rows x columns.",
    "variants": {
-    "10x32x185x388": {
+    "small": {
+     "folder": "10x32x185x388",
      "archive": "EXAFEL/SDRBENCH-EXAFEL-10x32x185x388.tar.gz",
+     "description": "10 events of the 32-panel detector as raw counts: raw, dark (background) and calib-fde frames, unsigned 16-bit.",
      "rules": [
       {
        "glob": "smd-*.u16",
@@ -469,13 +584,14 @@
         388
        ],
        "pattern": "smd-cxif\\d+-r\\d+-(.+)\\.u16",
-       "name": "{0}"
+       "var": "{0}"
       }
-     ],
-     "name": "small"
+     ]
     },
-    "986x32x185x388": {
+    "large": {
+     "folder": "986x32x185x388",
      "archive": "EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
+     "description": "986 calibrated events of the 32-panel detector, single precision.",
      "rules": [
       {
        "glob": "EXAFEL-LCLS-986x32x185x388.f32",
@@ -487,13 +603,14 @@
         388
        ],
        "pattern": "EXAFEL-LCLS-.*",
-       "name": "data"
+       "var": "data"
       }
-     ],
-     "name": "large"
+     ]
     },
-    "130x1480x1552": {
+    "assembled": {
+     "folder": "130x1480x1552",
      "archive": "EXAFEL/SDRBENCH-EXAFEL-130x1480x1552.tar.gz",
+     "description": "130 assembled 1480 x 1552 detector images with Bragg peak positions and counts per event.",
      "rules": [
       {
        "glob": "SDRBENCH-EXAFEL-data-130x1480x1552.f32",
@@ -504,7 +621,7 @@
         1552
        ],
        "pattern": "SDRBENCH-EXAFEL-(data)-.*",
-       "name": "{0}"
+       "var": "{0}"
       },
       {
        "glob": "SDRBENCH-EXAFEL-nPeaks.i64",
@@ -513,7 +630,7 @@
         130
        ],
        "pattern": "SDRBENCH-EXAFEL-(nPeaks)\\.i64",
-       "name": "{0}"
+       "var": "{0}"
       },
       {
        "glob": "SDRBENCH-EXAFEL-peak*PosRaw-130x2048.d64",
@@ -523,160 +640,183 @@
         2048
        ],
        "pattern": "SDRBENCH-EXAFEL-(peak[XY]PosRaw)-130x2048\\.d64",
-       "name": "{0}"
+       "var": "{0}"
       }
-     ],
-     "name": "assembled"
+     ]
     }
    }
   },
   "hacc": {
    "title": "HACC",
-   "description": "Cosmology particle simulation (Hardware/Hybrid Accelerated Cosmology Code). Particle fields (x, y, z, vx, vy, vz) stored separately as 1D arrays; single precision, little-endian. Variants: medium/big snapshots, sbig = one region of time step 499 at full scale (coordinates only), multi-timesteps/<region> = one region over many time steps.",
    "source": "HACC team (ECP ExaSky); https://www.alcf.anl.gov/science/case-studies/opencosmo-community-portal-cosmological-simulations",
    "citation_extra": "Please cite Heitmann et al., Astrophys. J. Suppl. 252 (2021) 2, 19 (https://inspirehep.net/literature/1799008) when using HACC data.",
    "globus_dir": "EXASKY/HACC",
+   "description": "Cosmology N-body simulation (HACC, ECP ExaSky): particle coordinates xx, yy, zz and velocities vx, vy, vz as separate 1D arrays, single precision, little-endian.",
    "variants": {
     "medium": {
+     "folder": "medium",
      "archive": "EXASKY/HACC/EXASKY-HACC-data-medium-size.tar.gz",
+     "description": "One snapshot with 280,953,867 particles.",
      "rules": [
       {
        "glob": "*.f32",
        "dtype": "<f4",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(\\w+)\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "medium"
+     ]
     },
     "big": {
+     "folder": "big",
      "archive": "EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz",
+     "description": "One snapshot with 1,073,726,487 particles.",
      "rules": [
       {
        "glob": "*.f32",
        "dtype": "<f4",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(\\w+)\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "big"
+     ]
     },
     "sbig": {
+     "folder": "sbig",
      "archive": "EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz",
+     "description": "One region (1/768) of time step 499 of a trillion-particle run: coordinates only.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "\\d+-(\\w+)\\.f32",
-       "name": "{0}"
+       "var": "{0}"
       }
-     ],
-     "name": "sbig"
+     ]
     },
-    "multi-timesteps/1840": {
+    "region1": {
+     "folder": "multi-timesteps/1840",
      "archive": "EXASKY/HACC/multi-timesteps/1840.tar.gz",
+     "description": "Region 1840: coordinates xx, yy, zz over about 100 time steps (the particle count changes per step) and the particle IDs.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "(\\d+)-(\\w+)\\.f32",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "ID.u64",
        "dtype": "<u8",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(ID)\\.u64",
+       "var": "{0}"
       }
-     ],
-     "note": "One region (1840) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
-     "name": "region1"
+     ]
     },
-    "multi-timesteps/20000": {
+    "region2": {
+     "folder": "multi-timesteps/20000",
      "archive": "EXASKY/HACC/multi-timesteps/20000.tar.gz",
+     "description": "Region 20000: coordinates xx, yy, zz over about 100 time steps (the particle count changes per step) and the particle IDs.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "(\\d+)-(\\w+)\\.f32",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "ID.u64",
        "dtype": "<u8",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(ID)\\.u64",
+       "var": "{0}"
       }
-     ],
-     "note": "One region (20000) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
-     "name": "region2"
+     ]
     },
-    "multi-timesteps/24120": {
+    "region3": {
+     "folder": "multi-timesteps/24120",
      "archive": "EXASKY/HACC/multi-timesteps/24120.tar.gz",
+     "description": "Region 24120: coordinates xx, yy, zz over about 100 time steps (the particle count changes per step) and the particle IDs.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "(\\d+)-(\\w+)\\.f32",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "ID.u64",
        "dtype": "<u8",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(ID)\\.u64",
+       "var": "{0}"
       }
-     ],
-     "note": "One region (24120) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
-     "name": "region3"
+     ]
     },
-    "multi-timesteps/30210": {
+    "region4": {
+     "folder": "multi-timesteps/30210",
      "archive": "EXASKY/HACC/multi-timesteps/30210.tar.gz",
+     "description": "Region 30210: coordinates xx, yy, zz over about 100 time steps (the particle count changes per step) and the particle IDs.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "(\\d+)-(\\w+)\\.f32",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "ID.u64",
        "dtype": "<u8",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(ID)\\.u64",
+       "var": "{0}"
       }
-     ],
-     "note": "One region (30210) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
-     "name": "region4"
+     ]
     },
-    "multi-timesteps/4529": {
+    "region6": {
+     "folder": "multi-timesteps/4529",
      "archive": "EXASKY/HACC/multi-timesteps/4529.tar.gz",
+     "description": "Region 4529: coordinates xx, yy, zz over about 100 time steps (the particle count changes per step) and the particle IDs.",
      "rules": [
       {
        "glob": "*-*.f32",
        "dtype": "<f4",
        "shape": "1d",
        "pattern": "(\\d+)-(\\w+)\\.f32",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "ID.u64",
        "dtype": "<u8",
-       "shape": "1d"
+       "shape": "1d",
+       "pattern": "(ID)\\.u64",
+       "var": "{0}"
       }
-     ],
-     "note": "One region (4529) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
-     "name": "region6"
+     ]
     }
    }
   },
   "nyx": {
    "title": "NYX",
-   "description": "Cosmology: adaptive mesh hydrodynamics + N-body cosmological simulation. 6 fields of 512x512x512, single precision, little-endian; the _log variant holds log-transformed fields.",
    "source": "Zarija Lukic (LBNL)",
    "globus_dir": "EXASKY/NYX",
+   "description": "Cosmology: adaptive-mesh hydrodynamics + N-body simulation (Nyx), 512 x 512 x 512, single precision, little-endian.",
    "variants": {
-    "512x512x512": {
+    "original": {
+     "folder": "512x512x512",
      "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512.tar.gz",
+     "description": "Six fields: baryon and dark-matter density, temperature, velocities.",
      "rules": [
       {
        "glob": "*.f32",
@@ -685,13 +825,16 @@
         512,
         512,
         512
-       ]
+       ],
+       "pattern": "(\\w+)\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "original"
+     ]
     },
-    "512x512x512_log": {
+    "log": {
+     "folder": "512x512x512_log",
      "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512_log.tar.gz",
+     "description": "The same fields with the two densities log10-transformed (recommended for visualization).",
      "rules": [
       {
        "glob": "*.f32",
@@ -700,35 +843,31 @@
         512,
         512,
         512
-       ]
+       ],
+       "pattern": "(\\w+)\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "log"
+     ]
     }
    }
   },
   "nwchem": {
    "title": "NWChem",
-   "description": "Two-electron repulsion integrals computed over Gaussian-type orbital basis sets, generated by libint (Valeev group, Virginia Tech), an integral evaluation option in NWChemEx. 3 fields, 1D, double precision, little-endian.",
    "source": "libint (https://github.com/evaleev/libint), Valeev research group, Virginia Tech",
    "globus_dir": "NWChem",
+   "description": "Two-electron repulsion integrals over Gaussian-type orbital basis sets, computed with libint (Valeev group, Virginia Tech), an integral engine of NWChemEx; 1D arrays.",
    "variants": {
-    "nwchem": {
+    "default": {
+     "folder": "nwchem",
      "archive": "NWChem/SDRBENCH-NWChem-dataset.tar.gz",
+     "description": "Three integral sets (631, acd, ccd), double precision, plus a reader (readbin.cpp).",
      "rules": [
       {
        "glob": "*-tst.bin.d64",
        "dtype": "<f8",
        "shape": "1d",
        "pattern": "(\\w+)-tst\\.bin\\.d64",
-       "name": "{0}"
-      },
-      {
-       "glob": "*-tst.bin.f32",
-       "dtype": "<f4",
-       "shape": "1d",
-       "pattern": "(\\w+)-tst\\.bin\\.f32",
-       "name": "{0}.f32"
+       "var": "{0}"
       },
       {
        "glob": "*.cpp",
@@ -736,18 +875,35 @@
        "shape": null
       }
      ],
-     "name": "default"
+     "exclude": "*-tst.bin.f32"
+    },
+    "f32": {
+     "folder": "nwchem",
+     "archive": "NWChem/SDRBENCH-NWChem-dataset.tar.gz",
+     "select": "*-tst.bin.f32",
+     "description": "The same integrals as single-precision copies.",
+     "rules": [
+      {
+       "glob": "*-tst.bin.f32",
+       "dtype": "<f4",
+       "shape": "1d",
+       "pattern": "(\\w+)-tst\\.bin\\.f32",
+       "var": "{0}"
+      }
+     ]
     }
    }
   },
   "scale-letkf": {
    "title": "SCALE-LETKF",
-   "description": "Weather/climate simulation from the Local Ensemble Transform Kalman Filter (LETKF) data assimilation package for the SCALE-RM model. 13 fields of 98x1200x1200, single precision, little-endian; the _log variant holds log-transformed fields.",
    "source": "RIKEN; contact Guo-Yuan Lien (guoyuan.lien@gmail.com)",
    "globus_dir": "SCALE_LETKF",
+   "description": "Weather simulation from the SCALE-RM model with LETKF data assimilation (RIKEN): 12 variables on 98 x 1200 x 1200 (z, y, x), single precision, little-endian.",
    "variants": {
-    "98x1200x1200": {
+    "original": {
+     "folder": "98x1200x1200",
      "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200.tar.gz",
+     "description": "All variables.",
      "rules": [
       {
        "glob": "*-98x1200x1200.f32",
@@ -756,13 +912,16 @@
         98,
         1200,
         1200
-       ]
+       ],
+       "pattern": "(\\w+)-98x1200x1200\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "original"
+     ]
     },
-    "98x1200x1200_log": {
+    "log": {
+     "folder": "98x1200x1200_log",
      "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200_log.tar.gz",
+     "description": "The hydrometeor and vapour mixing ratios log10-transformed; the other variables unchanged.",
      "rules": [
       {
        "glob": "*-98x1200x1200.log10.f32",
@@ -773,7 +932,7 @@
         1200
        ],
        "pattern": "(\\w+)-98x1200x1200\\.log10\\.f32",
-       "name": "{0}.log10"
+       "var": "{0}_log10"
       },
       {
        "glob": "*-98x1200x1200.f32",
@@ -782,32 +941,34 @@
         98,
         1200,
         1200
-       ]
+       ],
+       "pattern": "(\\w+)-98x1200x1200\\.f32",
+       "var": "{0}"
       }
-     ],
-     "name": "log"
+     ]
     }
    }
   },
   "qmcpack": {
    "title": "QMCPACK",
-   "description": "Many-body ab initio Quantum Monte Carlo (electronic structure of atoms, molecules and solids): einspline orbitals, single precision, little-endian. The archive holds the original layout (115, 69, 69, 288) with the orbital index fastest; variant 288x115x69x69 gives the preconditioned layout (288 orbitals x 115 x 69 x 69).",
    "source": "QMCPACK performance test; contact Ye Luo (yeluo@anl.gov)",
    "globus_dir": "QMCPACK",
+   "description": "Many-body ab initio Quantum Monte Carlo (QMCPACK): 288 einspline orbitals on a 115 x 69 x 69 grid, single precision, little-endian.",
    "variants": {
-    "288x115x69x69": {
-     "view_of": "115x69x69x288",
+    "preconditioned": {
+     "view_of": "original",
      "transpose": [
       3,
       0,
       1,
       2
      ],
-     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file.",
-     "name": "preconditioned"
+     "description": "(orbital, x, y, z) = (288, 115, 69, 69): each orbital is a contiguous, smooth 3D block. This is the layout of the SDRBench command examples (einspline_288_115_69_69.pre.f32); computed on load from the stored file."
     },
-    "115x69x69x288": {
+    "original": {
+     "folder": "115x69x69x288",
      "archive": "QMCPACK/SDRBENCH-QMCPack.tar.gz",
+     "description": "The layout QMCPACK uses in memory: (x, y, z, orbital) = (115, 69, 69, 288), orbital index fastest.",
      "rules": [
       {
        "glob": "einspline_115_69_69_288.f32",
@@ -817,21 +978,24 @@
         69,
         69,
         288
-       ]
+       ],
+       "pattern": "(einspline)_.*",
+       "var": "{0}"
       }
-     ],
-     "name": "original"
+     ]
     }
    }
   },
   "miranda": {
    "title": "Miranda",
-   "description": "Hydrodynamics code for large turbulence simulations (Rayleigh-Taylor instability). 256x384x384: 7 double-precision fields of an early time step (pressure, viscocity and diffusivity are legacy names of time-derivative restart fields); 3072x3072x3072: one single-precision density field of a late time step in 96 slabs.",
    "source": "LLNL; contact Peter Lindstrom (lindstrom2@llnl.gov)",
    "globus_dir": "Miranda",
+   "description": "Rayleigh-Taylor instability simulated with LLNL's Miranda hydrodynamics code.",
    "variants": {
-    "256x384x384": {
+    "small": {
+     "folder": "256x384x384",
      "archive": "Miranda/SDRBENCH-Miranda-256x384x384.tar.gz",
+     "description": "7 fields of a 256 x 384 x 384 subdomain at an early time, double precision. pressure, viscocity and diffusivity are legacy (incorrect) names of time-derivative restart fields.",
      "rules": [
       {
        "glob": "*.d64",
@@ -840,13 +1004,16 @@
         256,
         384,
         384
-       ]
+       ],
+       "pattern": "(\\w+)\\.d64",
+       "var": "{0}"
       }
-     ],
-     "name": "small"
+     ]
     },
-    "3072x3072x3072": {
+    "big": {
+     "folder": "3072x3072x3072",
      "archive": "Miranda/SDRBENCH-Miranda-3072x3072x3072.tar.gz",
+     "description": "One 3072^3 single-precision density field at a late time, stored as 96 slabs density/00 ... density/95 of 32 x 3072 x 3072; ds.series('density').concatenate() joins them (116 GB).",
      "rules": [
       {
        "glob": "density-*.f32",
@@ -856,35 +1023,71 @@
         3072,
         3072
        ],
-       "pattern": "density-(\\d+)\\.f32",
-       "name": "density/{0}"
+       "pattern": "(density)-(\\d+)\\.f32",
+       "var": "{0}",
+       "step": "{1}"
       }
      ],
-     "note": "A single 3072^3 single-precision density field of a late Rayleigh-Taylor time step, split into 96 slabs density/00 ... density/95 of shape (32, 3072, 3072) along the slowest axis; np.concatenate of the slabs in order gives the full (3072, 3072, 3072) field.",
-     "name": "big"
+     "step_kind": "slab"
     }
    }
   },
   "s3d": {
    "title": "S3D",
-   "description": "Combustion simulation. 11 fields of 500x500x500, double precision, little-endian.",
    "source": "Hemanth Kolla (SNL, hnkolla@sandia.gov)",
    "globus_dir": "S3D",
+   "description": "Statistically planar premixed methane flame simulated with S3D (SNL): 11 variables on 500 x 500 x 500, double precision, little-endian.",
    "variants": {
-    "s3d": {
+    "default": {
+     "folder": "s3d",
      "archive": "S3D/SDRBENCH-S3D.tar.gz",
-     "name": "default"
+     "description": "5 time steps (t = 1.1e-3 ... 2.995e-3 s). Each stored file holds all 11 variables (variable x z x y x x); fields are zero-copy views per variable: mass fractions CH4, O2, CO, CO2, H2O, N2; temperature T (normalized by 120 K), pressure P (by 1.41837e5 Pa), velocities U, V, W (by 347.2 m/s).",
+     "rules": [
+      {
+       "glob": "stat_planar.*.field.d64",
+       "dtype": "<f8",
+       "shape": [
+        11,
+        500,
+        500,
+        500
+       ],
+       "pattern": "stat_planar\\.(.+)\\.field\\.d64",
+       "step": "{0}",
+       "components": [
+        "CH4",
+        "O2",
+        "CO",
+        "CO2",
+        "H2O",
+        "N2",
+        "T",
+        "P",
+        "U",
+        "V",
+        "W"
+       ]
+      },
+      {
+       "glob": "flist.txt",
+       "dtype": null,
+       "shape": null
+      }
+     ]
     }
    }
   },
   "basilisk-turbulence": {
    "title": "Basilisk-Turbulence",
-   "description": "2D decaying turbulence at Re = 10,000 simulated with Basilisk (http://basilisk.fr/): time-varying 2D velocity fields u and v on 1024x1024 (1501 time steps) and 2048x2048 (1001 time steps) grids, single precision, little-endian; shapes are (time, y, x). The first time step is an all-zero placeholder.",
    "source": "M. Xia, Y. Li, P. Jiao, B. Wang, X. Liang and H. Guo, \"Time-Varying Vector Field Compression with Preserved Critical Point Trajectories,\" IEEE ICDE 2026, pp. 2235-2249, doi:10.1109/ICDE65706.2026.00168",
    "globus_dir": "Basilisk-Turbulence",
+   "description": "2D decaying turbulence at Re = 10,000 simulated with Basilisk (http://basilisk.fr/): velocity components u, v over time, single precision, little-endian. The first time step is an all-zero placeholder.",
    "variants": {
-    "basilisk": {
+    "small": {
+     "folder": "basilisk",
      "archive": "Basilisk-Turbulence/SDRBENCH-Basilisk-Turbulence.tar.gz",
+     "select": "*1024x1024x1501*",
+     "description": "1024 x 1024 grid, 1501 time steps: shape (time, y, x).",
      "rules": [
       {
        "glob": "*_1024x1024x1501Re10k.f32",
@@ -894,9 +1097,22 @@
         1024,
         1024
        ],
-       "pattern": "([uv])_(\\d+)x\\d+x\\d+Re10k\\.f32",
-       "name": "{1}/{0}"
+       "pattern": "([uv])_.*",
+       "var": "{0}"
       },
+      {
+       "glob": "*.txt",
+       "dtype": null,
+       "shape": null
+      }
+     ]
+    },
+    "large": {
+     "folder": "basilisk",
+     "archive": "Basilisk-Turbulence/SDRBENCH-Basilisk-Turbulence.tar.gz",
+     "select": "*2048x2048x1001*",
+     "description": "2048 x 2048 grid, 1001 time steps: shape (time, y, x).",
+     "rules": [
       {
        "glob": "*_2048x2048x1001Re10k.f32",
        "dtype": "<f4",
@@ -905,22 +1121,28 @@
         2048,
         2048
        ],
-       "pattern": "([uv])_(\\d+)x\\d+x\\d+Re10k\\.f32",
-       "name": "{1}/{0}"
+       "pattern": "([uv])_.*",
+       "var": "{0}"
+      },
+      {
+       "glob": "*.txt",
+       "dtype": null,
+       "shape": null
       }
-     ],
-     "name": "default"
+     ]
     }
    }
   },
   "xgc": {
    "title": "XGC",
-   "description": "Fusion simulation (XGC gyrokinetic code). 9 time steps on an unstructured mesh (20694 nodes x 512), double precision, little-endian; the mesh is included in the archive.",
    "source": "Princeton Plasma Physics Laboratory (PPPL); https://jychoi-hpc.github.io/adios-python-docs/XGC-mesh-and-field-data.html",
    "globus_dir": "XGC",
+   "description": "Gyrokinetic fusion plasma simulation (XGC, PPPL): fields on an unstructured mesh of 20694 nodes x 512 toroidal planes, 9 time steps, double precision.",
    "variants": {
-    "xgc": {
+    "raw": {
+     "folder": "xgc",
      "archive": "XGC/xgc.zip",
+     "description": "Raw binary arrays extracted from the ADIOS files: per time step dpot, iden (20694 x 512), pot0, potm0 (20694); mesh arrays prefixed mesh_.",
      "rules": [
       {
        "glob": "xgc.3d.*_20694x512_double",
@@ -930,7 +1152,8 @@
         512
        ],
        "pattern": "xgc\\.3d\\.(\\d+)\\.bp_(.+?)_[\\dx]+_double",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "xgc.3d.*_20694_double",
@@ -939,7 +1162,8 @@
         20694
        ],
        "pattern": "xgc\\.3d\\.(\\d+)\\.bp_(.+?)_[\\dx]+_double",
-       "name": "{0}/{1}"
+       "var": "{1}",
+       "step": "{0}"
       },
       {
        "glob": "xgc.mesh.*_20694x2_double",
@@ -948,8 +1172,8 @@
         20694,
         2
        ],
-       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
-       "name": "mesh/{0}"
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_double",
+       "var": "mesh_{0}"
       },
       {
        "glob": "xgc.mesh.*_20694_double",
@@ -957,8 +1181,8 @@
        "shape": [
         20694
        ],
-       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
-       "name": "mesh/{0}"
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_double",
+       "var": "mesh_{0}"
       },
       {
        "glob": "xgc.mesh.*_41087x3_int32_t",
@@ -967,8 +1191,8 @@
         41087,
         3
        ],
-       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
-       "name": "mesh/{0}"
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_int32_t",
+       "var": "mesh_{0}"
       },
       {
        "glob": "xgc.mesh.*_20694_int32_t",
@@ -976,22 +1200,22 @@
        "shape": [
         20694
        ],
-       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
-       "name": "mesh/{0}"
+       "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_int32_t",
+       "var": "mesh_{0}"
       }
-     ],
-     "name": "raw"
+     ]
     },
-    "xgc.3d": {
+    "adios": {
+     "folder": "xgc.3d",
      "archive": "XGC/xgc.3d.tar.gz",
+     "description": "The original ADIOS BP files (not raw arrays; read them with ADIOS).",
      "rules": [
       {
        "glob": "*.bp",
        "dtype": null,
        "shape": null
       }
-     ],
-     "name": "adios"
+     ]
     }
    }
   }

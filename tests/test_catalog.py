@@ -33,14 +33,20 @@ def test_every_array_size_matches_shape():
         assert f["path"].startswith(v + "/"), f
         assert len(f["sha256"]) == 64
         if f["dtype"]:
-            assert math.prod(f["shape"]) * ITEM[f["dtype"]] == f["bytes"], (d, f["path"])
+            stored = f.get("file_shape") or f["shape"]
+            assert math.prod(stored) * ITEM[f["dtype"]] == f["bytes"], (d, f["path"])
+            if f.get("index") is not None:  # component view: one slice along axis 0 of the stored file
+                assert list(stored[1:]) == f["shape"] and 0 <= f["index"] < stored[0]
+            if f.get("transpose"):
+                assert sorted(f["shape"]) == sorted(stored)
         else:
             assert f["shape"] is None
 
 
 def test_paths_unique_and_repos_named():
     for d, ds in CATALOG["datasets"].items():
-        paths = [f["path"] for v in ds["variants"].values() if "transpose" not in v for f in v["files"]]
+        # every stored file belongs to exactly one (non-derived) variant; components share their file
+        paths = [p for v in ds["variants"].values() if "transpose" not in v for p in {f["path"] for f in v["files"]}]
         assert len(paths) == len(set(paths)), d
         assert ds["repo"] == f"sdrbench/{d}"
 
@@ -66,15 +72,16 @@ RULES = [{"glob": "*.f32", "dtype": "<f4", "shape": [2, 3]},
          {"glob": "*.bp", "dtype": None, "shape": None}]
 
 
-def entry(path, nbytes, rules=RULES, variant="v"):
-    return sync.file_entry("ds", variant, {"path": f"{variant}/{path}", "bytes": nbytes}, rules)
+def entry(path, nbytes, rules=RULES, folder="v"):
+    out = sync.file_entries("ds", folder, {"path": f"{folder}/{path}", "bytes": nbytes, "sha256": "0" * 64}, rules)
+    return [(e["dtype"], e["shape"], e["name"]) for e in out]
 
 
 def test_rules_exact_and_1d():
-    assert entry("a.f32", 24) == ("<f4", [2, 3], "a")
-    assert entry("sub/b.d64", 80) == ("<f8", [10], "sub/b")
-    assert entry("c.bp", 123) == (None, None, None)
-    assert entry("README.txt", 7) == (None, None, None)
+    assert entry("a.f32", 24) == [("<f4", [2, 3], "a")]
+    assert entry("sub/b.d64", 80) == [("<f8", [10], "sub/b")]
+    assert entry("c.bp", 123) == [(None, None, None)]
+    assert entry("README.txt", 7) == [(None, None, None)]
 
 
 def test_rules_reject_wrong_size_and_unknown_files():
@@ -84,23 +91,37 @@ def test_rules_reject_wrong_size_and_unknown_files():
         entry("b.d64", 81)
     with pytest.raises(sync.CatalogError, match="no dtype/shape rule"):
         entry("mystery.dat", 8)
+    with pytest.raises(sync.CatalogError, match="unsupported dtype"):
+        entry("x.f32", 8, rules=[{"glob": "*.f32", "dtype": "<c8", "shape": [1]}])
 
 
-def test_rules_match_variant_with_slash():
-    assert entry("xx.f32", 24, variant="multi-timesteps/1840") == ("<f4", [2, 3], "xx")
+def test_rules_match_folder_with_slash():
+    assert entry("xx.f32", 24, folder="multi-timesteps/1840") == [("<f4", [2, 3], "xx")]
 
 
-def test_field_names():
-    assert sync.field_name("CLDHGH_1_1800_3600.f32", None) == "CLDHGH"
-    assert sync.field_name("T-98x1200x1200.f32", None) == "T"
-    assert sync.field_name("Pf48.bin.f32", None) == "Pf48"
-    assert sync.field_name("einspline_115_69_69_288.f32", None) == "einspline"
-    assert sync.field_name("temperature.f32", None) == "temperature"
-    assert sync.field_name("sub/U-98x1200x1200.f32", None) == "sub/U"
-    rule = {"pattern": r"(dataset\d)-\d+x\d+\.(\w+)\.f32\.dat", "name": "{0}.{1}"}
-    assert sync.field_name("dataset1-5423x3137.x.f32.dat", rule) == "dataset1.x"
-    with pytest.raises(sync.CatalogError, match="name pattern"):
-        sync.field_name("other.f32", rule)
+def test_var_step_identity():
+    rule = {"pattern": r"(\w+)f(\d+)\.f32", "var": "{0}", "step": "{1}"}
+    assert sync.identity("Pf07.f32", rule) == ("P", "07")
+    assert sync.field_name("P", "07") == "P/07" and sync.field_name("T", None) == "T"
+    assert sync.default_var("CLDHGH_1_1800_3600.f32") == "CLDHGH"
+    assert sync.default_var("T-98x1200x1200.f32") == "T"
+    assert sync.default_var("temperature.f32") == "temperature"
+    with pytest.raises(sync.CatalogError, match="does not match pattern"):
+        sync.identity("other.f32", rule)
+
+
+def test_components_split_axis0_into_views():
+    rules = [{"glob": "*.d64", "dtype": "<f8", "shape": [3, 2, 2], "pattern": r"t(\d)\.d64", "step": "{0}",
+              "components": ["A", "B", "C"]}]
+    out = sync.file_entries("ds", "v", {"path": "v/t5.d64", "bytes": 96, "sha256": "0" * 64}, rules)
+    assert [(e["name"], e["index"], e["shape"], e["file_shape"]) for e in out] == [
+        ("A/5", 0, [2, 2], [3, 2, 2]), ("B/5", 1, [2, 2], [3, 2, 2]), ("C/5", 2, [2, 2], [3, 2, 2])]
+
+
+def test_select_exclude():
+    assert sync.selected("QGRAUPf01.f32", {"select": "QGRAUPf*"})
+    assert not sync.selected("QCLOUDf01.f32", {"select": "QGRAUPf*"})
+    assert not sync.selected("631-tst.bin.f32", {"exclude": "*-tst.bin.f32"})
 
 
 def test_field_names_unique_in_catalog():
@@ -109,6 +130,17 @@ def test_field_names_unique_in_catalog():
             names = [f["name"] for f in vv["files"] if f["name"]]
             assert len(names) == len(set(names)), (d, v)
             assert all(f["name"] for f in vv["files"] if f["dtype"]), (d, v)
+
+
+def test_descriptions_mention_no_dims_or_unknown_variants():
+    """Descriptions are prose: no folder names / dims strings used as variant names."""
+    import re
+    for d, ds in CFG["datasets"].items():
+        for v, vv in ds["variants"].items():
+            text = vv.get("description", "")
+            for folder in {x.get("folder") for x in ds["variants"].values()} - {None}:
+                if re.search(r"\d+x\d+", folder):
+                    assert f"variant {folder}" not in text and f"'{folder}'" not in text, (d, v, folder)
 
 
 def test_page_link_parsing():
@@ -131,7 +163,7 @@ def test_cards_render_for_every_dataset():
 # --- streaming mirror (dry: no Hugging Face API) -----------------------------------
 def test_stream_mirror_layout_matches_fetch_archive(tmp_path):
     from conftest import make_tar, make_zip
-    from sdrbench.archive import fetch_archive, sha256_file
+    from sdrbench._archive import fetch_archive, sha256_file
     members = {"a.f32": b"\x01" * 400, "d/b.d64": b"\x02" * 800}
     for maker, name in ((make_tar, "x.tar.gz"), (make_zip, "x.zip")):
         src = tmp_path / name
@@ -167,12 +199,12 @@ def test_variant_names_have_no_dimension_strings():
 def test_core_never_calls_builtin_list():
     """core.py defines list() (sdrbench.list); a stray list(...) call there would call it."""
     import ast
-    src = (ROOT / "src" / "sdrbench" / "core.py").read_text() if (ROOT / "src").exists() else None
+    src = (ROOT / "src" / "sdrbench" / "_core.py").read_text() if (ROOT / "src").exists() else None
     if src is None:
         pytest.skip("source tree not available (testing an installed wheel)")
     calls = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
              and isinstance(n.func, ast.Name) and n.func.id == "list"]
-    assert all(c.args == [] and c.keywords == [] for c in calls), "use [*x] instead of list(x) in core.py"
+    assert all(c.args == [] and all(k.arg == "variants" for k in c.keywords) for c in calls), "use [*x] instead of list(x) in _core.py"
 
 
 class FakeHF:

@@ -30,7 +30,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "src"))
-from sdrbench.archive import fetch_archive, sha256_file  # noqa: E402
+from sdrbench._archive import fetch_archive, sha256_file  # noqa: E402
 
 DATASETS = HERE / "datasets.json"
 STATE = HERE / "state.json"
@@ -59,11 +59,14 @@ def cfg():
 
 
 def archives(c):
-    """(dataset, variant, archive_rel) for every mirrored archive."""
+    """(dataset, folder, archive_rel) for every mirrored archive, once each (several API
+    variants may share one archive, e.g. QCLOUD and QGRAUP)."""
+    seen = set()
     for d, ds in c["datasets"].items():
-        for v, vv in ds["variants"].items():
-            if "archive" in vv:  # derived views have no archive of their own
-                yield d, v, vv["archive"]
+        for vv in ds["variants"].values():
+            if "archive" in vv and vv["archive"] not in seen:  # derived views have no archive
+                seen.add(vv["archive"])
+                yield d, vv["folder"], vv["archive"]
 
 
 def http_head(url):
@@ -162,7 +165,7 @@ def _members(url, scratch):
     Also returns md5/size of the archive through the generator's StopIteration value."""
     import tarfile
     import zipfile
-    from sdrbench.archive import _HashingReader, _is_junk, _open_url, CHUNK
+    from sdrbench._archive import _HashingReader, _is_junk, _open_url, CHUNK
     scratch.mkdir(parents=True, exist_ok=True)
     with _open_url(url) as resp:
         reader = _HashingReader(resp)
@@ -297,7 +300,10 @@ def cmd_mirror(a):
             skipped.append(rel)
             continue
         if api and dataset not in done_ds:
-            api.create_repo(f"{ORG}/{dataset}", repo_type="dataset", exist_ok=True)
+            url_repo = api.create_repo(f"{ORG}/{dataset}", repo_type="dataset", exist_ok=True)
+            if "README.md" not in api.list_repo_files(f"{ORG}/{dataset}", repo_type="dataset"):
+                api.upload_file(path_or_fileobj=placeholder_card(dataset, c).encode(), path_in_repo="README.md",
+                                repo_id=f"{ORG}/{dataset}", repo_type="dataset", commit_message="Placeholder card")
         log(f"== {dataset}/{variant} <- {url} ({head['bytes']/1e9:.2f}GB, {shutil.disk_usage(work).free/1e9:.0f}GB free)")
         t0 = time.time()
         files, md5, n = stream_mirror(api, f"{ORG}/{dataset}", variant, url, work / "scratch",
@@ -370,15 +376,8 @@ DTYPE_SUFFIXES = (".bin.f32", ".pre.f32.dat", ".f32.dat", ".bin.d64", ".f32", ".
 TRAILING_DIMS = re.compile(r"[_-]\d+(?:[x_]\d+)+$")  # _1_1800_3600, -98x1200x1200, _115_69_69_288
 
 
-def field_name(rel, rule):
-    """Short field name: the physical variable, without dtype/dimension decorations.
-    A rule may give 'pattern' (regex on the path inside the variant) and 'name' (str.format
-    template over the groups); otherwise suffixes and trailing dimensions are stripped."""
-    if rule and rule.get("pattern"):
-        m = re.fullmatch(rule["pattern"], rel)
-        if not m:
-            raise CatalogError(f"{rel}: does not match name pattern {rule['pattern']!r}")
-        return rule["name"].format(*m.groups(), **m.groupdict())
+def default_var(rel):
+    """Physical variable from a file name: dtype suffix and trailing dimensions stripped."""
     n = rel
     for suf in DTYPE_SUFFIXES:
         if n.endswith(suf) and len(n) > len(suf):
@@ -389,17 +388,46 @@ def field_name(rel, rule):
     return f"{head}/{tail}" if head else tail
 
 
-def file_entry(dataset, variant, f, rules):
-    """(dtype, shape, name) for one file from the variant's explicit rules; sizes must agree exactly."""
-    rel = f["path"][len(variant) + 1:] if f["path"].startswith(variant + "/") else f["path"]
+def identity(rel, rule):
+    """(var, step) of a file. A rule's 'pattern' (regex on the path inside the folder) fills
+    the 'var' and 'step' str.format templates; without a pattern the var is derived from the
+    file name and there is no step."""
+    if rule and rule.get("pattern"):
+        m = re.fullmatch(rule["pattern"], rel)
+        if not m:
+            raise CatalogError(f"{rel}: does not match pattern {rule['pattern']!r}")
+        g = m.groups()
+        var = rule["var"].format(*g, **m.groupdict()) if rule.get("var") else None
+        step = rule["step"].format(*g, **m.groupdict()) if rule.get("step") else None
+        return var, step
+    return default_var(rel), None
+
+
+def field_name(var, step):
+    """Canonical field name: the variable, or variable/step for time series and slabs."""
+    return var if step is None else f"{var}/{step}"
+
+
+def selected(rel, vv):
+    import fnmatch
+    sel, exc = vv.get("select"), vv.get("exclude")
+    match = lambda pats: any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(rel.rsplit("/", 1)[-1], g)
+                             for g in ([pats] if isinstance(pats, str) else pats))
+    return (sel is None or match(sel)) and not (exc and match(exc))
+
+
+def file_entries(dataset, folder, f, rules):
+    """Catalog entries for one file. Usually one; a rule with 'components' yields one entry per
+    variable stacked along axis 0 (zero-copy views). Sizes must agree exactly with the rule."""
+    rel = f["path"][len(folder) + 1:] if f["path"].startswith(folder + "/") else f["path"]
+    base = {"path": f["path"], "bytes": f["bytes"], "sha256": f["sha256"]}
     r = match_rule(rel, rules)
-    name = f["path"].rsplit("/", 1)[-1]
     if r is None:
-        if name.lower().endswith(NON_ARRAY):
-            return None, None, None
+        if rel.lower().endswith(NON_ARRAY):
+            return [{**base, "name": None, "dtype": None, "shape": None}]
         raise CatalogError(f"{dataset}/{f['path']}: no dtype/shape rule (add one to sync/datasets.json)")
     if r.get("dtype") is None:
-        return None, None, None
+        return [{**base, "name": None, "dtype": None, "shape": None}]
     if r["dtype"] not in ITEMSIZE:
         raise CatalogError(f"{dataset}/{f['path']}: unsupported dtype {r['dtype']!r}")
     item = ITEMSIZE[r["dtype"]]
@@ -410,61 +438,65 @@ def file_entry(dataset, variant, f, rules):
         shape = [f["bytes"] // item]
     if math.prod(shape) * item != f["bytes"]:
         raise CatalogError(f"{dataset}/{f['path']}: shape {shape} x {item}B != {f['bytes']} bytes")
-    return r["dtype"], list(shape), field_name(rel, r)
+    var, step = identity(rel, r)
+    if not r.get("components"):
+        return [{**base, "name": field_name(var, step), "var": var, "step": step,
+                 "dtype": r["dtype"], "shape": list(shape)}]
+    comps = r["components"]
+    if shape[0] != len(comps):
+        raise CatalogError(f"{dataset}/{f['path']}: {len(comps)} components but axis 0 has {shape[0]}")
+    return [{**base, "name": field_name(c, step), "var": c, "step": step, "dtype": r["dtype"],
+             "shape": list(shape[1:]), "file_shape": list(shape), "index": i} for i, c in enumerate(comps)]
 
 
 def build_catalog(c, state, strict=True, revisions=None):
     """Catalog from datasets.json rules + state.json; ``revisions`` pins each dataset to the
     Hugging Face commit it was built from (sync/revisions.json)."""
     revisions = revisions if revisions is not None else load_json(REVISIONS, {})
-    out = {"schema": 1, "org": ORG, "globus_base": c["globus_base"], "page": c["page"], "datasets": {}}
+    out = {"schema": 2, "org": ORG, "globus_base": c["globus_base"], "page": c["page"], "datasets": {}}
     errors = []
     for d, ds in c["datasets"].items():
         entry = {k: ds[k] for k in ("title", "description", "source", "acknowledgment", "citation_extra") if k in ds}
         entry["repo"] = f"{ORG}/{d}"
         if revisions.get(d):
             entry["revision"] = revisions[d]
-        entry["variants"] = {}
+        built = {}
         for v, vv in ds["variants"].items():
             if "view_of" in vv:
-                continue  # added below, once the base variant exists
+                continue
             st = state.get(vv["archive"])
             if not st:
                 continue
             fl = []
             for f in st["files"]:
+                rel = f["path"][len(vv["folder"]) + 1:]
+                if not selected(rel, vv):
+                    continue
                 try:
-                    dt, shape, fname = file_entry(d, v, f, vv.get("rules", []))
+                    fl += file_entries(d, vv["folder"], f, vv.get("rules", []))
                 except CatalogError as e:
                     errors.append(str(e))
-                    dt, shape, fname = None, None, None
-                fl.append({"path": f["path"], "name": fname, "bytes": f["bytes"], "sha256": f["sha256"],
-                           "dtype": dt, "shape": shape})
+            fl.sort(key=lambda x: (x["path"], x.get("index") or 0))  # stable order, components as stored
             names = [x["name"] for x in fl if x["name"]]
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
-                errors.append(f"{d}/{v}: duplicate field names {dups} (add a 'pattern'/'name' rule)")
-            entry["variants"][v] = {"folder": v, "note": vv.get("note"),
-                                    "archive": {"url": st["url"], "bytes": st["bytes"], "md5": st["md5"]},
-                                    "files": fl}
+                errors.append(f"{d}/{v}: duplicate field names {dups} (adjust 'var'/'step' rules)")
+            if not names and not fl:
+                errors.append(f"{d}/{v}: no files selected")
+            built[v] = {"folder": vv["folder"], "description": vv.get("description"), "note": vv.get("note"),
+                        "archive": {"url": st["url"], "bytes": st["bytes"], "md5": st["md5"]}, "files": fl}
+            if vv.get("step_kind"):
+                built[v]["step_kind"] = vv["step_kind"]
         for v, vv in ds["variants"].items():
-            base = entry["variants"].get(vv.get("view_of"))
+            base = built.get(vv.get("view_of"))
             if "view_of" not in vv or base is None:
                 continue
             axes = vv["transpose"]
-            entry["variants"][v] = {
-                "folder": vv["view_of"], "note": vv.get("note"), "transpose": axes, "archive": base["archive"],
-                "files": [{**f, "shape": [f["shape"][i] for i in axes], "transpose": axes}
-                          for f in base["files"] if f["dtype"] and len(f["shape"]) == len(axes)]}
-        # key by the API variant name, in the order of datasets.json (first = default)
-        named = {}
-        for v, vv in ds["variants"].items():
-            if v in entry["variants"]:
-                n = vv.get("name", v)
-                if n in named:
-                    errors.append(f"{d}: duplicate variant name {n!r}")
-                named[n] = entry["variants"][v]
-        entry["variants"] = named
+            built[v] = {"folder": base["folder"], "description": vv.get("description"), "note": vv.get("note"),
+                        "transpose": axes, "archive": base["archive"],
+                        "files": [{**f, "shape": [f["shape"][i] for i in axes], "file_shape": f["shape"], "transpose": axes}
+                                  for f in base["files"] if f["dtype"] and len(f["shape"]) == len(axes)]}
+        entry["variants"] = {v: built[v] for v in ds["variants"] if v in built}  # datasets.json order
         if entry["variants"]:
             out["datasets"][d] = entry
     if errors and strict:
@@ -514,36 +546,43 @@ def human(n):
 
 
 def _example(name, d):
-    """(variant, field) used in the card examples: the smallest array of the default variant."""
+    """(variant, field) used in the card examples: the smallest multi-dimensional array of the
+    default variant (a component view counts by its own size)."""
     v0 = next(iter(d["variants"]))
-    arrays = [f for f in d["variants"][v0]["files"] if f["dtype"] and len(f["shape"]) > 1] or \
-             [f for f in d["variants"][v0]["files"] if f["dtype"]]
-    return v0, (min(arrays, key=lambda f: f["bytes"]) if arrays else None)
+    fs = [f for f in d["variants"][v0]["files"] if f["dtype"]]
+    size = lambda f: math.prod(f["shape"]) * ITEMSIZE[f["dtype"]]
+    arrays = [f for f in fs if len(f["shape"]) > 1] or fs
+    return v0, (min(arrays, key=size) if arrays else None)
 
 
-def _stored_shape(f):
-    t = f.get("transpose")
-    return tuple(f["shape"][t.index(i)] for i in range(len(t))) if t else tuple(f["shape"])
-
-
-def _transpose_suffix(f):
-    t = f.get("transpose")
-    return f".transpose{tuple(t)}  # stored order -> {tuple(f['shape'])}" if t else ""
+def _plain_read(d, f):
+    """numpy snippet that reads the field from the stored file without the sdrbench package."""
+    rev = f', revision="{d["revision"]}"' if d.get("revision") else ""
+    lines = [f'p = hf_hub_download("{d["repo"]}", "{f["path"]}", repo_type="dataset"{rev})']
+    if f.get("transpose"):
+        lines.append(f'x = np.fromfile(p, dtype="{f["dtype"]}").reshape({tuple(f["file_shape"])})'
+                     f'.transpose{tuple(f["transpose"])}  # -> {tuple(f["shape"])}')
+    elif f.get("index") is not None:
+        lines.append(f'x = np.fromfile(p, dtype="{f["dtype"]}").reshape({tuple(f["file_shape"])})[{f["index"]}]'
+                     f'  # {f["var"]} -> {tuple(f["shape"])}')
+    else:
+        lines.append(f'x = np.fromfile(p, dtype="{f["dtype"]}").reshape({tuple(f["shape"])})')
+    return "\n".join(lines)
 
 
 def card_python(name, d):
     """The runnable usage example shown on the card (also executed by the online tests)."""
     v0, f = _example(name, d)
     if f is None:
-        return f'import sdrbench\nds = sdrbench.dataset("{name}")\npaths = ds.download()\n'
-    shape = tuple(f["shape"])
+        return f'import sdrbench\nds = sdrbench.dataset("{name}")\npaths = ds.download("data/")\n'
+    vline = f'ds = sdrbench.dataset("{name}")' + (f'                # default variant "{v0}"' if len(d["variants"]) > 1 else "")
     return f"""import numpy as np
 import sdrbench
 from pysz import sz, szConfig, szErrorBoundMode
 
-ds = sdrbench.dataset("{name}")         # default variant: {v0}
+{vline}
 print(ds.fields)
-x = ds["{f['name']}"]                     # numpy array, dtype {f['dtype']}, shape {shape}
+x = ds["{f['name']}"]                     # numpy array, dtype {f['dtype']}, shape {tuple(f['shape'])}
 
 # compress with SZ3 (pysz) at a 1e-3 value-range-relative error bound
 conf = szConfig()
@@ -556,80 +595,115 @@ print(f"ratio {{ratio:.1f}}x, PSNR {{psnr:.1f}} dB, max error {{max_err:.3g}}")
 """
 
 
-def render_card(name, d):
-    total = sum(f["bytes"] for v in d["variants"].values() if "transpose" not in v for f in v["files"])
-    sections = []
+def manifest_rows(name, d):
+    """One row per array field (plus non-array files): the machine-readable file table that
+    `datasets.load_dataset` and the Hugging Face viewer show for the repo."""
+    rows = []
     for v, vv in d["variants"].items():
-        arr = [f for f in vv["files"] if f["dtype"]]
-        other = [f for f in vv["files"] if not f["dtype"]]
-        head = f"### `{v}`" + (" (default)" if v == next(iter(d["variants"])) else "")
-        lines = [head, ""]
-        if vv.get("note"):
-            lines += [vv["note"], ""]
-        if "transpose" in vv:
-            lines += [f"Derived layout: no extra files; computed on load by transposing the files in `{vv['folder']}/`.", ""]
-        else:
-            lines += [f"{len(vv['files'])} files, {human(sum(f['bytes'] for f in vv['files']))}, "
-                      f"from [{vv['archive']['url'].rsplit('/', 1)[-1]}]({vv['archive']['url']}).", ""]
-        if arr:
-            lines += ["| Field | dtype | Shape (C order) | File |", "|---|---|---|---|"]
-            shown = arr if len(arr) <= 30 else arr[:12]
-            lines += [f"| `{f['name']}` | `{f['dtype']}` | {' x '.join(map(str, f['shape']))} | `{f['path']}` |" for f in shown]
-            if len(arr) > len(shown):
-                lines += [f"| ... {len(arr) - len(shown)} more | | | |"]
-        if other:
-            lines += ["", "Other files: " + ", ".join(f"`{f['path']}`" for f in other[:10])
-                      + (" ..." if len(other) > 10 else "")]
-        sections.append("\n".join(lines))
-    extra = ""
-    if d.get("acknowledgment"):
-        extra += f"\n**Acknowledgment requested by the data provider:** {d['acknowledgment']}\n"
-    if d.get("citation_extra"):
-        extra += f"\n**Citation requested by the data provider:** {d['citation_extra']}\n"
-    v0, f = _example(name, d)
-    plain = ""
-    if f:
-        plain = f"""
-Without the package, any file can be read with `huggingface_hub` and numpy:
+        for f in vv["files"]:
+            rows.append({"variant": v, "field": f.get("name"), "var": f.get("var"), "step": f.get("step"),
+                         "path": f["path"], "dtype": f.get("dtype"), "shape": f.get("shape"),
+                         "file_shape": f.get("file_shape") or f.get("shape"), "component": f.get("index"),
+                         "transpose": f.get("transpose"), "bytes": f["bytes"], "sha256": f["sha256"]})
+    return rows
 
-```python
-from huggingface_hub import hf_hub_download
-import numpy as np
-p = hf_hub_download("{d['repo']}", "{f['path']}", repo_type="dataset")
-x = np.fromfile(p, dtype="{f['dtype']}").reshape({_stored_shape(f)}){_transpose_suffix(f)}
-```
-"""
-    others = [v for v in d["variants"] if v != v0]
-    variant_line = (f'\nOther variants: `sdrbench.dataset("{name}", "{others[0]}")`'
-                    + (f" (all: {', '.join(f'`{v}`' for v in others)})" if len(others) > 1 else "") + ".\n") if others else ""
-    return f"""---
+
+CARD_YAML = """---
 license: other
 license_name: sdrbench
 license_link: https://sdrbench.github.io/
-pretty_name: "SDRBench: {d['title']}"
-viewer: false
+pretty_name: "SDRBench: {title}"
 tags:
 - scientific-data
 - lossy-compression
 - sdrbench
 - hpc
 - sz3
+configs:
+- config_name: files
+  data_files: files.jsonl
+  default: true
 ---
+"""
 
+NOT_ARROW = ("> **Raw binary arrays, not an Arrow/Parquet dataset.** `datasets.load_dataset(\"{repo}\")` "
+             "returns the table of files (`files.jsonl`: path, dtype, shape, sha256). Read the arrays with the "
+             "`sdrbench` package or `hf_hub_download` + numpy as shown below.")
+
+
+def placeholder_card(name, c):
+    """Minimal card pushed when a repo is created, before any data (so HF never guesses a format)."""
+    ds = c["datasets"][name]
+    return (CARD_YAML.format(title=ds["title"]) + f"\n# SDRBench — {ds['title']}\n\n"
+            + NOT_ARROW.format(repo=f"{ORG}/{name}") + "\n\nUpload in progress; see https://sdrbench.github.io/datasets.html\n")
+
+
+def render_card(name, d):
+    total = sum(f["bytes"] for v in d["variants"].values() if "transpose" not in v
+                for f in {x["path"]: x for x in v["files"]}.values())
+    v0, f0 = _example(name, d)
+    sections = []
+    for v, vv in d["variants"].items():
+        arr = [f for f in vv["files"] if f["dtype"]]
+        other = [f for f in vv["files"] if not f["dtype"]]
+        stored = {f["path"]: f for f in vv["files"]}
+        head = f"### `{v}`" + (" (default)" if v == v0 else "")
+        where = (f"derived from `{vv['folder']}/`, no extra files" if "transpose" in vv else
+                 f"folder `{vv['folder']}/` — {len(stored)} files, {human(sum(f['bytes'] for f in stored.values()))}, from "
+                 f"[{vv['archive']['url'].rsplit('/', 1)[-1]}]({vv['archive']['url']})")
+        lines = [head, "", f"`sdrbench.dataset(\"{name}\", \"{v}\")` — {where}.", ""]
+        if vv.get("description"):
+            lines += [vv["description"], ""]
+        if vv.get("note"):
+            lines += [vv["note"], ""]
+        steps = sorted({f["step"] for f in arr if f.get("step")}, key=lambda s: (len(s), s))
+        variables = [*dict.fromkeys(f.get("var") or f["name"] for f in arr)]
+        if steps:
+            lines += [f"{len(variables)} variable(s) x {len(steps)} steps ({steps[0]} ... {steps[-1]}): "
+                      f"`ds.series(\"{variables[0]}\")`, `ds[\"{variables[0]}\", \"{steps[0]}\"]`.", ""]
+        if arr:
+            lines += ["| Field | dtype | Shape (C order) | File |", "|---|---|---|---|"]
+            shown = arr if len(arr) <= 24 else arr[:10]
+            lines += [f"| `{f['name']}` | `{f['dtype']}` | {' x '.join(map(str, f['shape']))} | `{f['path']}`"
+                      + (f" [{f['index']}]" if f.get("index") is not None else "") + " |" for f in shown]
+            if len(arr) > len(shown):
+                lines += [f"| ... {len(arr) - len(shown)} more | | | |"]
+        if other:
+            lines += ["", "Other files: " + ", ".join(f"`{f['path']}`" for f in other[:10]) + (" ..." if len(other) > 10 else "")]
+        sections.append("\n".join(lines))
+    extra = ""
+    if d.get("acknowledgment"):
+        extra += f"\n**Acknowledgment requested by the data provider:** {d['acknowledgment']}\n"
+    if d.get("citation_extra"):
+        extra += f"\n**Citation requested by the data provider:** {d['citation_extra']}\n"
+    plain = ""
+    if f0:
+        plain = f"""
+Without the package, with `huggingface_hub` and numpy only:
+
+```python
+from huggingface_hub import hf_hub_download
+import numpy as np
+{_plain_read(d, f0)}
+```
+"""
+    rev = f" (revision `{d['revision'][:10]}`)" if d.get("revision") else ""
+    return CARD_YAML.format(title=d["title"]) + f"""
 # SDRBench — {d['title']}
 
-{d['description']}
+{d.get('description', '')}
 
-This repository is an **unmodified mirror** of the {d['title']} dataset from
-[SDRBench]({CAT_PAGE}), the Scientific Data Reduction Benchmark. The originals are hosted by
-Argonne National Laboratory on Globus; every archive was unpacked and its files uploaded
-byte-for-byte (sha256 verified). `metadata/` holds the original SDRBench property and template
-files. The mirror is kept in sync automatically by
+{NOT_ARROW.format(repo=d['repo'])}
+
+This repository is an **unmodified mirror** of the {d['title']} data of [SDRBench]({CAT_PAGE}), the
+Scientific Data Reduction Benchmark. The originals are hosted by Argonne National Laboratory on Globus;
+every archive was unpacked and its files uploaded byte-for-byte (sha256 verified){rev}. `metadata/` holds
+the original SDRBench property and template files. Kept in sync automatically by
 [szcompressor/sdrbench](https://github.com/szcompressor/sdrbench).
 
-- **Data source:** {d['source']}
-- **Total size:** {human(total)}
-- **Format:** raw little-endian binary, C order (slowest dimension first)
+- **Data provider:** {d['source']}
+- **Size:** {human(total)} in {len(d['variants'])} variant(s)
+- **Format:** raw little-endian binary, C order (slowest dimension first); dtype and shape per field below
 {extra}
 ## Usage
 
@@ -640,17 +714,18 @@ pip install "sdrbench[sz3]"     # sdrbench + pysz (SZ3)
 ```python
 {card_python(name, d).rstrip()}
 ```
-{variant_line}
-Files are downloaded on first use and cached; if Hugging Face is unreachable the package falls
-back to the original archive on Globus.
+
+Files are fetched on first use (in parallel with `ds.download("data/")`) and cached, pinned to the revision
+of the installed `sdrbench` release; if Hugging Face is unreachable the package falls back to the original
+archive on Globus. Existing local SDRBench copies can be used with `sdrbench.dataset("{name}", root="/path")`.
 {plain}
-## Contents
+## Variants and fields
 
 {chr(10).join(chr(10) + s for s in sections)}
 
 ## Citation
 
-If you use this dataset, please cite SDRBench{' and the data provider (see above)' if extra else ''}:
+Please cite SDRBench{' and the data provider (see above)' if extra else ''}; `sdrbench cite {name}` prints it:
 
 ```bibtex
 {SDRBENCH_BIBTEX}
@@ -658,8 +733,9 @@ If you use this dataset, please cite SDRBench{' and the data provider (see above
 
 ## License and terms
 
-The data are distributed under the same terms as on the [SDRBench website]({CAT_PAGE}).
-Rights remain with the original data providers listed above.
+The data are distributed by the SDRBench team for research use under the terms of the original
+data providers listed above (see the [SDRBench website]({CAT_PAGE})); please acknowledge them as
+requested. Rights remain with the data providers.
 """
 
 
@@ -667,6 +743,7 @@ CAT_PAGE = "https://sdrbench.github.io/datasets.html"
 
 
 def cmd_cards(a):
+    from huggingface_hub import CommitOperationAdd
     cat = json.loads(CATALOG.read_text())
     api = None
     if not a.dry:
@@ -677,13 +754,15 @@ def cmd_cards(a):
         if a.only and name not in a.only:
             continue
         card = render_card(name, d)
+        manifest = "".join(json.dumps(r) + "\n" for r in manifest_rows(name, d))
         if outdir:
             outdir.mkdir(parents=True, exist_ok=True)
             (outdir / f"{name}.md").write_text(card)
+            (outdir / f"{name}.files.jsonl").write_text(manifest)
         if api:
-            api.upload_file(path_or_fileobj=card.encode(), path_in_repo="README.md",
-                            repo_id=f"{ORG}/{name}", repo_type="dataset",
-                            commit_message="Update dataset card")
+            api.create_commit(repo_id=f"{ORG}/{name}", repo_type="dataset", commit_message="Update dataset card and file table",
+                              operations=[CommitOperationAdd("README.md", card.encode()),
+                                          CommitOperationAdd("files.jsonl", manifest.encode())])
             log("card ->", f"{ORG}/{name}")
     return 0
 
@@ -695,9 +774,7 @@ PROP_RE = re.compile(r"The property of (\S+?)\s*:\s*.*?The first 10 values are:\
 
 def read_range(repo, path, start, length):
     from huggingface_hub import HfFileSystem
-    with HfFileSystem().open(f"datasets/{repo}/{path}", "rb", block_size=0) as fh:
-        fh.seek(start)
-        data = fh.read(length)
+    data = HfFileSystem().cat_file(f"datasets/{repo}/{path}", start=start, end=start + length)
     if len(data) != length:
         raise IOError(f"range read of {path} returned {len(data)} bytes, wanted {length}")
     return data
@@ -751,7 +828,11 @@ def cmd_verify(a):
         if a.only and name not in a.only:
             continue
         # derived (transposed) variants are checked through their base files
-        arrays = [f for v in d["variants"].values() if "transpose" not in v for f in v["files"] if f["dtype"]]
+        # one entry per stored file, with the file's own shape (component views share a file;
+        # derived transposed variants are checked through their stored files)
+        arrays = [*{f["path"]: {**f, "shape": f.get("file_shape") or f["shape"]}
+                    for v in d["variants"].values() if "transpose" not in v
+                    for f in v["files"] if f["dtype"]}.values()]
         byname = {}
         for f in arrays:
             byname.setdefault(f["path"].rsplit("/", 1)[-1], []).append(f)

@@ -3,7 +3,7 @@ import tarfile
 
 import pytest
 
-from sdrbench.archive import fetch_archive, sha256_file
+from sdrbench._archive import fetch_archive, sha256_file
 from conftest import make_tar, make_zip
 
 
@@ -205,7 +205,7 @@ def test_concurrent_processes_same_archive(tmp_path):
     from conftest import make_tar
     members = {f"f{i:03d}.f32": bytes([i % 256]) * 20000 for i in range(80)}
     make_tar(tmp_path / "m.tar.gz", members)
-    code = ("import sys; from sdrbench.core import _globus_lock; from sdrbench.archive import fetch_archive\n"
+    code = ("import sys; from sdrbench._core import _globus_lock; from sdrbench._archive import fetch_archive\n"
             "with _globus_lock(sys.argv[2]):\n fetch_archive(sys.argv[1], sys.argv[2])")
     procs = [subprocess.Popen([sys.executable, "-c", code, (tmp_path / "m.tar.gz").as_uri(), str(tmp_path / "out")])
              for _ in range(3)]

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import sdrbench
-import sdrbench.core as core
+import sdrbench._core as core
 from sdrbench.cli import main as cli
 
 REAL_DOWNLOAD_HF = core._download_hf  # captured before the fixture replaces it
@@ -11,7 +11,7 @@ REAL_DOWNLOAD_HF = core._download_hf  # captured before the fixture replaces it
 def test_list_and_fields(fake_dataset):
     assert sdrbench.list() == ["fake"]
     ds = sdrbench.dataset("fake")
-    assert ds.variant == "v1" and ds.variants == ["v1", "v2", "v1t"]
+    assert ds.variant == "v1" and ds.variants == ["v1", "v2", "series", "v1t"]
     assert ds.fields == ["a", "sub/b"]                 # suffixes stripped, text files are not fields
     assert [f.name for f in ds.files] == ["a", "sub/b", "notes.txt"]
     assert len(ds) == 2 and "a" in ds and list(ds) == ["a", "sub/b"]
@@ -147,7 +147,7 @@ def test_derived_transposed_variant(fake_dataset, monkeypatch):
         raise OSError("down")
     monkeypatch.setattr(core, "_download_hf", broken)
     with pytest.warns(UserWarning):
-        g = sdrbench.dataset("fake", "v1t").field("a").load(fake_dataset["cache"])
+        g = sdrbench.dataset("fake", "v1t").field("a").load(cache=fake_dataset["cache"])
     np.testing.assert_array_equal(g, t)
     assert (fake_dataset["cache"] / "globus" / "fake" / "v1" / "a.f32").exists()  # base variant's folder
 
@@ -182,7 +182,7 @@ def test_save_plain_files_to_directory(fake_dataset, tmp_path):
 def test_parallel_download_and_single_globus_unpack(fake_dataset, monkeypatch, tmp_path):
     import threading
     import time
-    import sdrbench.core as core_mod
+    import sdrbench._core as core_mod
     seen, active, peak = [], [0], [0]
     real = fake_dataset_hf = core_mod._download_hf
     lock = threading.Lock()
@@ -208,3 +208,89 @@ def test_parallel_download_and_single_globus_unpack(fake_dataset, monkeypatch, t
     monkeypatch.setattr(core_mod, "fetch_archive", counting_fetch)
     paths = sdrbench.dataset("fake", cache=tmp_path / "c").download(tmp_path / "g", source="globus", workers=3)
     assert len(calls) == 1 and all(p.exists() for p in paths)
+
+
+def test_series_steps_and_tuple_keys(fake_dataset):
+    ds = sdrbench.dataset("fake", "series", cache=fake_dataset["cache"])
+    assert ds.variables == ["P", "A", "B", "C"] and ds.steps == ["01", "02", "5"]
+    s = ds.series("P")
+    assert s.steps == ["01", "02"] and len(s) == 2 and s["02"].name == "P/02"
+    np.testing.assert_array_equal(s.stack(), np.stack([fake_dataset["p1"], fake_dataset["p2"]]))
+    np.testing.assert_array_equal(ds["P", "01"], fake_dataset["p1"])
+    np.testing.assert_array_equal(s.concatenate(axis=1), np.concatenate([fake_dataset["p1"], fake_dataset["p2"]], 1))
+    with pytest.raises(KeyError, match="did you mean 'P'"):
+        ds.series("PP")
+
+
+def test_component_views_are_zero_copy_slices(fake_dataset):
+    ds = sdrbench.dataset("fake", "series", cache=fake_dataset["cache"])
+    for i, c in enumerate("ABC"):
+        x = ds[f"{c}/5"]
+        assert isinstance(x, np.memmap) and x.shape == (2, 2)
+        np.testing.assert_array_equal(x, fake_dataset["comp"][i])
+    f = ds.field("B/5")
+    assert f.stored_shape == (3, 2, 2) and f.shape_fastest_first == (2, 2)
+    np.testing.assert_array_equal(f.load(mmap=False), fake_dataset["comp"][1])
+
+
+def test_save_materialises_views(fake_dataset, tmp_path):
+    f = sdrbench.dataset("fake", "v1t").field("a")
+    out = f.save(tmp_path / "a_pre.f32")
+    np.testing.assert_array_equal(np.fromfile(out, "<f4").reshape(f.shape), fake_dataset["a"].transpose(2, 0, 1))
+    g = sdrbench.dataset("fake", "series").field("C/5").save(tmp_path / "c.d64")
+    np.testing.assert_array_equal(np.fromfile(g, "<f8").reshape(2, 2), fake_dataset["comp"][2])
+
+
+def test_local_root_is_used_before_downloading(fake_dataset, monkeypatch, tmp_path):
+    # an untarred SDRBench copy keeps the archive's top folder: found by name + size
+    raw = tmp_path / "lustre" / "SDRBENCH-FAKE"
+    raw.mkdir(parents=True)
+    (raw / "a.f32").write_bytes(fake_dataset["a"].tobytes())
+    def no_network(*a, **k):
+        raise AssertionError("must not download")
+    monkeypatch.setattr(core, "_download_hf", no_network)
+    x = sdrbench.dataset("fake", root=tmp_path / "lustre")["a"]
+    np.testing.assert_array_equal(x, fake_dataset["a"])
+    # an earlier ds.download(dir) round-trips through root=dir; $SDRBENCH_DATA works too
+    dl = tmp_path / "dl" / "v1" / "sub"
+    dl.mkdir(parents=True)
+    (dl / "b.d64").write_bytes(fake_dataset["b"].tobytes())
+    monkeypatch.setenv("SDRBENCH_DATA", str(tmp_path / "dl"))
+    np.testing.assert_array_equal(sdrbench.dataset("fake")["sub/b"], fake_dataset["b"])
+    # a local file with the wrong size is ignored
+    (raw / "a.f32").write_bytes(b"short")
+    core._name_index.cache_clear()
+    with pytest.warns(UserWarning, match="falling back"):   # local copy ignored -> HF (broken here) -> Globus
+        x = sdrbench.dataset("fake", root=tmp_path / "lustre", cache=fake_dataset["cache"])["a"]
+    np.testing.assert_array_equal(x, fake_dataset["a"])
+
+
+def test_mapping_list_and_exports(fake_dataset):
+    import collections.abc
+    ds = sdrbench.dataset("fake")
+    assert isinstance(ds, collections.abc.Mapping) and ds.get("zzz") is None and "a" in ds.keys()
+    assert sdrbench.list(variants=True) == ["fake/v1", "fake/v2", "fake/series", "fake/v1t"]
+    assert "list" not in sdrbench.__all__ and sdrbench.list() == ["fake"]
+    assert [f.name for f in ds.extra_files] == ["notes.txt"]
+    assert "fields" in repr(ds) and "<f4 2x3x4" in repr(ds.field("a"))
+
+
+def test_errors_guide_the_user(fake_dataset):
+    ds = sdrbench.dataset("fake")
+    with pytest.raises(KeyError, match="did you mean 'a'"):
+        ds["aa"]
+    with pytest.raises(KeyError, match="is in variant 'series'"):
+        ds["P/01"]
+    with pytest.raises(KeyError, match="did you mean 'fake'"):
+        sdrbench.dataset("fak")
+
+
+def test_folder_name_is_a_variant_alias(fake_dataset):
+    cat = fake_dataset["catalog"]["datasets"]["fake"]["variants"]
+    cat["v2"]["folder"] = "512x512x512"
+    assert sdrbench.dataset("fake", "512x512x512").variant == "v2"
+
+
+def test_citation(fake_dataset):
+    c = sdrbench.dataset("fake").citation()
+    assert "zhao2020sdrbench" in c and "fake/v1" in c and "sdrbench==" in c

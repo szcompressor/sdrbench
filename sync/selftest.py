@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 
 import sdrbench
-from sdrbench.archive import sha256_file
+from sdrbench._archive import sha256_file
 
 PROP = re.compile(r"The property of (\S+?)\s*:.*?min\s*=\s*(\S+)\s*max\s*=\s*(\S+)", re.S)
 
@@ -78,44 +78,53 @@ def _range(x, chunk=1 << 26):
     return (lo if lo != math.inf else math.nan), (hi if hi != -math.inf else math.nan), nbad
 
 
-def check_field(ds, f, work, ranges, plain_max=200e6):
-    """Check one file through the public API; returns a result dict (None for derived layouts)."""
-    if f.transpose:  # derived layout: checked against its stored file in check_view
-        return None
-    r = {"dataset": ds.name, "variant": ds.variant, "field": f.name, "path": f.path, "ok": True, "issues": []}
-    tag = f"{ds.name}-{ds.variant}-{f.path}".replace("/", "_")
+def check_file(ds, fs, work, ranges, plain_max=200e6):
+    """Check one stored file and every field backed by it (component views share a file),
+    through the public API; returns result dicts."""
+    f0 = fs[0]
+    tag = f"{ds.name}-{ds.variant}-{f0.path}".replace("/", "_")
     dest, cache = work / f"plain-{tag}", work / f"cache-{tag}"
-    api = sdrbench.dataset(ds.name, ds.variant, cache=cache)  # private cache per check
+    api = sdrbench.dataset(ds.name, ds.variant, cache=cache)  # private cache per file
+    out = []
     try:
-        if not f.dtype or f.nbytes <= plain_max:  # Field.download(dir): plain file, original name
-            p = f.download(dest)
-            if p.resolve() != (dest / f.path).resolve() or p.is_symlink() or sha256_file(p) != f.sha256:
-                r["issues"].append(f"download(dir) gave {p} with wrong name/content")
-        if f.dtype:
-            x = api[f.name]  # public API: memmap with the catalog dtype and shape
-            if x.dtype != np.dtype(f.dtype) or tuple(x.shape) != tuple(f.shape) or not x.flags.c_contiguous:
-                r["issues"].append(f"ds[{f.name!r}] returned {x.dtype} {x.shape}")
-            if sha256_file(api.field(f.name).download(cache=cache)) != f.sha256:  # file behind the array
-                r["issues"].append("sha256 mismatch")
-            lo, hi, nbad = _range(x)
-            if nbad:
-                r["nonfinite"] = nbad
-            r["min"], r["max"] = lo, hi
-            exp = ranges.get(f.filename)
-            if exp:
-                if any(math.isclose(lo, a, rel_tol=1e-4, abs_tol=1e-5) and math.isclose(hi, b, rel_tol=1e-4, abs_tol=1e-5)
-                       for a, b in exp):
-                    r["property_checked"] = True
-                else:
-                    r["issues"].append(f"min/max {lo:.6g}/{hi:.6g} != property file {sorted(exp)}")
-            del x
+        if not f0.dtype or f0.nbytes <= plain_max:  # Field.download(dir): plain file, original name
+            p = f0.download(dest)
+            if p.resolve() != (dest / f0.path).resolve() or p.is_symlink() or sha256_file(p) != f0.sha256:
+                out.append({"path": f0.path, "ok": False, "issues": [f"download(dir) gave {p} with wrong name/content"]})
+        if f0.dtype and sha256_file(api.field(f0.name).download(cache=cache)) != f0.sha256:
+            out.append({"path": f0.path, "ok": False, "issues": ["sha256 mismatch"]})
+        for f in fs:
+            if not f.dtype:
+                continue
+            r = {"dataset": ds.name, "variant": ds.variant, "field": f.name, "path": f.path, "issues": []}
+            try:
+                x = api[f.name]  # public API: memmap with the catalog dtype and shape
+                if x.dtype != np.dtype(f.dtype) or tuple(x.shape) != tuple(f.shape) or not x.flags.c_contiguous:
+                    r["issues"].append(f"ds[{f.name!r}] returned {x.dtype} {x.shape}")
+                lo, hi, nbad = _range(x)
+                if nbad:
+                    r["nonfinite"] = nbad
+                r["min"], r["max"] = lo, hi
+                exp = ranges.get(f.filename) if f.index is None else None  # property files describe whole files
+                if exp:
+                    if any(math.isclose(lo, a, rel_tol=1e-4, abs_tol=1e-5) and math.isclose(hi, b, rel_tol=1e-4, abs_tol=1e-5)
+                           for a, b in exp):
+                        r["property_checked"] = True
+                    else:
+                        r["issues"].append(f"min/max {lo:.6g}/{hi:.6g} != property file {sorted(exp)}")
+                del x
+            except Exception as e:
+                r["issues"].append(f"{type(e).__name__}: {e}")
+            r["ok"] = not r["issues"]
+            out.append(r)
+        if not f0.dtype:
+            out.append({"dataset": ds.name, "variant": ds.variant, "field": f0.name, "path": f0.path, "ok": True, "issues": []})
     except Exception as e:  # report and keep going
-        r["issues"].append(f"{type(e).__name__}: {e}")
+        out.append({"path": f0.path, "ok": False, "issues": [f"{type(e).__name__}: {e}"]})
     finally:
         shutil.rmtree(dest, ignore_errors=True)
         shutil.rmtree(cache, ignore_errors=True)
-    r["ok"] = not r["issues"]
-    return r
+    return out
 
 
 def check_view(ds, f, work):
@@ -182,8 +191,12 @@ def main():
         for variant in sdrbench.dataset(name).variants:
             ds = sdrbench.dataset(name, variant)
             log(f"== {name}/{variant}: {len(ds.files)} files, {ds.nbytes / 1e9:.1f} GB")
+            groups = {}
+            for f in ds.files:
+                if not f.transpose:  # derived layouts are checked against their stored files below
+                    groups.setdefault(f.path, []).append(f)
             with ThreadPoolExecutor(a.jobs) as pool:
-                rs = [r for r in pool.map(lambda f: check_field(ds, f, work, ranges), ds.files) if r]
+                rs = [r for rr in pool.map(lambda fs: check_file(ds, fs, work, ranges), groups.values()) for r in rr]
             rs += [check_view(ds, f, work) for f in ds.files if f.transpose]
             arch = sdrbench.catalog()["datasets"][name]["variants"][variant]
             if "transpose" not in arch and arch["archive"]["bytes"] < a.globus_max_gb * 1e9:
