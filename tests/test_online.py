@@ -17,7 +17,7 @@ def test_hf_download_matches_catalog(tmp_path):
 
 def test_default_api(tmp_path):
     ds = sdrbench.dataset("exaalt", cache=tmp_path)
-    assert ds.variant == "2869440" and set(ds.fields) == {"xx", "yy", "zz", "vx", "vy", "vz"}
+    assert ds.variant == "small" and set(ds.fields) == {"xx", "yy", "zz", "vx", "vy", "vz"}
     x = ds["xx"]
     assert x.shape == (2869440,) and x.dtype == np.dtype("<f4") and np.isfinite(x).all()
 
@@ -52,3 +52,15 @@ def test_save_to_directory_from_hf(tmp_path):
     p = f.download(tmp_path / "data", source="hf")
     assert p == tmp_path / "data" / "2869440" / "vy.f32" and p.is_file() and not p.is_symlink()
     assert hashlib.sha256(p.read_bytes()).hexdigest() == f.sha256
+
+
+def test_qmcpack_default_is_preconditioned(tmp_path):
+    """Default QMCPACK variant = (288, 115, 69, 69): the stored native file, transposed."""
+    pre = sdrbench.dataset("qmcpack", cache=tmp_path)
+    assert pre.variant == "preconditioned" and pre.variants == ["preconditioned", "original"]
+    x = pre["einspline"]
+    native = sdrbench.dataset("qmcpack", "original", cache=tmp_path)["einspline"]
+    assert x.shape == (288, 115, 69, 69) and native.shape == (115, 69, 69, 288)
+    assert x.flags.c_contiguous and np.array_equal(x, np.asarray(native).transpose(3, 0, 1, 2))
+    # a plain reshape of the stored bytes would NOT give this
+    assert not np.array_equal(x, np.asarray(native).reshape(288, 115, 69, 69))

@@ -93,7 +93,7 @@ class Dataset:
         self.repo = meta["repo"]
         self._archive = meta["variants"][variant]["archive"]
         # field names (physical variable names) are assigned by the sync pipeline; other files keep their path
-        stored = meta["variants"][variant].get("archive_variant", variant)
+        stored = meta["variants"][variant].get("folder", variant)  # folder on Hugging Face
         self.note = meta["variants"][variant].get("note")
         self.files = [Field(name, variant, f.get("name") or f["path"][len(stored) + 1:], f["path"], f["bytes"],
                             f["sha256"], f.get("dtype"), tuple(f["shape"]) if f.get("shape") else None,
@@ -195,7 +195,7 @@ def _download_globus(f: Field, cache) -> Path:
     root = cache_dir(cache) / "globus" / f.dataset
     local = root / f.path
     if not local.exists():
-        fetch_archive(arch["url"], root / v.get("archive_variant", f.variant), expected_md5=arch.get("md5"))
+        fetch_archive(arch["url"], root / v.get("folder", f.variant), expected_md5=arch.get("md5"))
     if not local.exists():
         raise FileNotFoundError(f"{f.path} not found in {arch['url']}")
     if sha256_file(local) != f.sha256:

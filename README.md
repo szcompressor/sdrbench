@@ -12,14 +12,14 @@ pip install sdrbench            # or "sdrbench[sz3]" to also get pysz (SZ3)
 import sdrbench
 
 sdrbench.list()                          # ['basilisk-turbulence', 'cesm-atm', 'exaalt', ...]
-nyx = sdrbench.dataset("nyx")            # default variant; sdrbench.dataset("nyx", "512x512x512_log")
+nyx = sdrbench.dataset("nyx")            # default variant; sdrbench.dataset("nyx", "log") for the log fields
 nyx.fields                               # ['baryon_density', 'dark_matter_density', 'temperature', ...]
 t = nyx["temperature"]                   # numpy memmap, float32, shape (512, 512, 512)
 for name, x in nyx.items(): ...          # downloads each field when reached
 sdrbench.load("cesm-atm", "CLDHGH")      # one-liner
 
 # save the raw files (original SDRBench names) to a directory of your choice
-nyx.field("temperature").download("data/")   # -> data/512x512x512/temperature.f32
+nyx.field("temperature").download("data/")   # -> data/512x512x512/temperature.f32 (original SDRBench name)
 nyx.download("data/")                        # every file of the variant
 ```
 
@@ -42,7 +42,7 @@ Command line:
 
 ```bash
 sdrbench list
-sdrbench info hurricane-isabel/Pf
+sdrbench info hurricane-isabel/P
 sdrbench download nyx temperature -o data/     # plain files under data/<variant>/
 ```
 
@@ -55,8 +55,12 @@ sdrbench download nyx temperature -o data/     # plain files under data/<variant
   original SDRBench archive on Globus (verified by sha256). `field.download(source="globus")`
   forces Globus.
 - Files on Hugging Face are byte-for-byte the files inside the SDRBench archives (a single top-level
-  folder inside an archive is dropped). Derived layouts such as QMCPACK `288x115x69x69`
-  (preconditioned) are computed on load and are not stored.
+  folder inside an archive is dropped). Derived layouts are computed on load and not stored:
+  QMCPACK's default variant `preconditioned` (288 x 115 x 69 x 69) is the transpose of the stored
+  native file, which stays available as variant `original`.
+- **Variants** have descriptive names (`nyx`: `original`, `log`; `cesm-atm`: `2d`, `2d-cleared`,
+  `3d`; `hacc`: `medium`, `big`, `sbig`, `region1`...; `hurricane-isabel`: `snapshot`, `P`, `QCLOUD`,
+  ...). The first one is the default; shapes are metadata (`field.shape`), never part of a name.
 
 ## Datasets
 

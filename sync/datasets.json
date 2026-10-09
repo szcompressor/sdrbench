@@ -1,5 +1,5 @@
 {
- "_comment": "Curated description of every mirrored SDRBench dataset. 'archive' is relative to globus_base. 'rules' map file globs (matched against the file name or its path inside the variant) to a numpy dtype and a C-order shape (slowest dimension first, as in the SZ3 CI dataset table); shape \"1d\" means a flat array. Every non-text file must match a rule and its size must equal prod(shape)*itemsize, or the catalog build fails. A rule with dtype null marks a non-array file (HDF5, ADIOS .bp, ...).",
+ "_comment": "Curated description of every mirrored SDRBench dataset. 'archive' is relative to globus_base. 'rules' map file globs (matched against the file name or its path inside the variant) to a numpy dtype and a C-order shape (slowest dimension first, as in the SZ3 CI dataset table); shape \"1d\" means a flat array. Every non-text file must match a rule and its size must equal prod(shape)*itemsize, or the catalog build fails. A rule with dtype null marks a non-array file (HDF5, ADIOS .bp, ...). Variant keys are the folder names on Hugging Face; 'name' is the variant name used in the Python API (the first variant listed is the default).",
  "globus_base": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/",
  "page": "https://sdrbench.github.io/datasets.html",
  "excluded": {
@@ -25,7 +25,8 @@
         3600
        ]
       }
-     ]
+     ],
+     "name": "2d"
     },
     "cleared-1800x3600": {
      "archive": "CESM-ATM/SDRBENCH-CESM-ATM-cleared-1800x3600.tar.gz",
@@ -38,7 +39,8 @@
         3600
        ]
       }
-     ]
+     ],
+     "name": "2d-cleared"
     },
     "26x1800x3600": {
      "archive": "CESM-ATM/SDRBENCH-CESM-ATM-26x1800x3600.tar.gz",
@@ -52,7 +54,8 @@
         3600
        ]
       }
-     ]
+     ],
+     "name": "3d"
     }
    }
   },
@@ -72,7 +75,8 @@
         2869440
        ]
       }
-     ]
+     ],
+     "name": "small"
     },
     "copper": {
      "archive": "EXAALT/SDRBENCH-EXAALT-copper.tar.gz",
@@ -97,7 +101,8 @@
        "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
        "name": "{0}.{1}"
       }
-     ]
+     ],
+     "name": "copper"
     },
     "helium": {
      "archive": "EXAALT/SDRBENCH-EXAALT-helium.tar.gz",
@@ -122,7 +127,8 @@
        "pattern": "(dataset\\d)-\\d+x\\d+\\.(\\w+)\\.f32\\.dat",
        "name": "{0}.{1}"
       }
-     ]
+     ],
+     "name": "helium"
     }
    }
   },
@@ -156,7 +162,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "snapshot"
     },
     "CLOUDf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUDf.tar.gz",
@@ -170,7 +177,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "CLOUD"
     },
     "PRECIPf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-PRECIPf.tar.gz",
@@ -184,7 +192,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "PRECIP"
     },
     "Pf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Pf.tar.gz",
@@ -198,7 +207,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "P"
     },
     "QCLOUDf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz",
@@ -213,7 +223,8 @@
        ]
       }
      ],
-     "note": "This SDRBench archive also contains the QGRAUPf01-48 fields (there is no separate QGRAUPf archive)."
+     "note": "This SDRBench archive also contains the QGRAUPf01-48 fields (there is no separate QGRAUPf archive).",
+     "name": "QCLOUD"
     },
     "QICEf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICEf.tar.gz",
@@ -227,7 +238,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "QICE"
     },
     "QRAINf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAINf.tar.gz",
@@ -241,7 +253,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "QRAIN"
     },
     "QSNOWf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOWf.tar.gz",
@@ -255,7 +268,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "QSNOW"
     },
     "QVAPORf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QVAPORf.tar.gz",
@@ -269,7 +283,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "QVAPOR"
     },
     "TCf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-TCf.tar.gz",
@@ -283,7 +298,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "TC"
     },
     "Uf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Uf.tar.gz",
@@ -297,7 +313,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "U"
     },
     "Vf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Vf.tar.gz",
@@ -311,7 +328,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "V"
     },
     "Wf": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Wf.tar.gz",
@@ -325,7 +343,8 @@
         500
        ]
       }
-     ]
+     ],
+     "name": "W"
     },
     "CLOUD_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUD_log10.tar.gz",
@@ -341,7 +360,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "CLOUD-log10"
     },
     "QCLOUD_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUD_log10.tar.gz",
@@ -357,7 +377,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "QCLOUD-log10"
     },
     "QGRAUP_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QGRAUP_log10.tar.gz",
@@ -373,7 +394,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "QGRAUP-log10"
     },
     "QICE_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICE_log10.tar.gz",
@@ -389,7 +411,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "QICE-log10"
     },
     "QRAIN_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAIN_log10.tar.gz",
@@ -405,7 +428,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "QRAIN-log10"
     },
     "QSNOW_log10": {
      "archive": "Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOW_log10.tar.gz",
@@ -421,7 +445,8 @@
        "pattern": "(\\w+)\\.bin\\.log10\\.f32",
        "name": "{0}.log10"
       }
-     ]
+     ],
+     "name": "QSNOW-log10"
     }
    }
   },
@@ -446,7 +471,26 @@
        "pattern": "smd-cxif\\d+-r\\d+-(.+)\\.u16",
        "name": "{0}"
       }
-     ]
+     ],
+     "name": "small"
+    },
+    "986x32x185x388": {
+     "archive": "EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
+     "rules": [
+      {
+       "glob": "EXAFEL-LCLS-986x32x185x388.f32",
+       "dtype": "<f4",
+       "shape": [
+        986,
+        32,
+        185,
+        388
+       ],
+       "pattern": "EXAFEL-LCLS-.*",
+       "name": "data"
+      }
+     ],
+     "name": "large"
     },
     "130x1480x1552": {
      "archive": "EXAFEL/SDRBENCH-EXAFEL-130x1480x1552.tar.gz",
@@ -481,24 +525,8 @@
        "pattern": "SDRBENCH-EXAFEL-(peak[XY]PosRaw)-130x2048\\.d64",
        "name": "{0}"
       }
-     ]
-    },
-    "986x32x185x388": {
-     "archive": "EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
-     "rules": [
-      {
-       "glob": "EXAFEL-LCLS-986x32x185x388.f32",
-       "dtype": "<f4",
-       "shape": [
-        986,
-        32,
-        185,
-        388
-       ],
-       "pattern": "EXAFEL-LCLS-.*",
-       "name": "data"
-      }
-     ]
+     ],
+     "name": "assembled"
     }
    }
   },
@@ -517,7 +545,19 @@
        "dtype": "<f4",
        "shape": "1d"
       }
-     ]
+     ],
+     "name": "medium"
+    },
+    "big": {
+     "archive": "EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz",
+     "rules": [
+      {
+       "glob": "*.f32",
+       "dtype": "<f4",
+       "shape": "1d"
+      }
+     ],
+     "name": "big"
     },
     "sbig": {
      "archive": "EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz",
@@ -529,17 +569,8 @@
        "pattern": "\\d+-(\\w+)\\.f32",
        "name": "{0}"
       }
-     ]
-    },
-    "big": {
-     "archive": "EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz",
-     "rules": [
-      {
-       "glob": "*.f32",
-       "dtype": "<f4",
-       "shape": "1d"
-      }
-     ]
+     ],
+     "name": "sbig"
     },
     "multi-timesteps/1840": {
      "archive": "EXASKY/HACC/multi-timesteps/1840.tar.gz",
@@ -557,7 +588,8 @@
        "shape": "1d"
       }
      ],
-     "note": "One region (1840) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
+     "note": "One region (1840) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
+     "name": "region1"
     },
     "multi-timesteps/20000": {
      "archive": "EXASKY/HACC/multi-timesteps/20000.tar.gz",
@@ -575,7 +607,8 @@
        "shape": "1d"
       }
      ],
-     "note": "One region (20000) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
+     "note": "One region (20000) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
+     "name": "region2"
     },
     "multi-timesteps/24120": {
      "archive": "EXASKY/HACC/multi-timesteps/24120.tar.gz",
@@ -593,7 +626,8 @@
        "shape": "1d"
       }
      ],
-     "note": "One region (24120) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
+     "note": "One region (24120) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
+     "name": "region3"
     },
     "multi-timesteps/30210": {
      "archive": "EXASKY/HACC/multi-timesteps/30210.tar.gz",
@@ -611,7 +645,8 @@
        "shape": "1d"
       }
      ],
-     "note": "One region (30210) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
+     "note": "One region (30210) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
+     "name": "region4"
     },
     "multi-timesteps/4529": {
      "archive": "EXASKY/HACC/multi-timesteps/4529.tar.gz",
@@ -629,7 +664,8 @@
        "shape": "1d"
       }
      ],
-     "note": "One region (4529) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs)."
+     "note": "One region (4529) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
+     "name": "region6"
     }
    }
   },
@@ -651,7 +687,8 @@
         512
        ]
       }
-     ]
+     ],
+     "name": "original"
     },
     "512x512x512_log": {
      "archive": "EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512_log.tar.gz",
@@ -665,7 +702,8 @@
         512
        ]
       }
-     ]
+     ],
+     "name": "log"
     }
    }
   },
@@ -697,7 +735,8 @@
        "dtype": null,
        "shape": null
       }
-     ]
+     ],
+     "name": "default"
     }
    }
   },
@@ -719,7 +758,8 @@
         1200
        ]
       }
-     ]
+     ],
+     "name": "original"
     },
     "98x1200x1200_log": {
      "archive": "SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200_log.tar.gz",
@@ -744,7 +784,8 @@
         1200
        ]
       }
-     ]
+     ],
+     "name": "log"
     }
    }
   },
@@ -754,6 +795,17 @@
    "source": "QMCPACK performance test; contact Ye Luo (yeluo@anl.gov)",
    "globus_dir": "QMCPACK",
    "variants": {
+    "288x115x69x69": {
+     "view_of": "115x69x69x288",
+     "transpose": [
+      3,
+      0,
+      1,
+      2
+     ],
+     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file.",
+     "name": "preconditioned"
+    },
     "115x69x69x288": {
      "archive": "QMCPACK/SDRBENCH-QMCPack.tar.gz",
      "rules": [
@@ -767,17 +819,8 @@
         288
        ]
       }
-     ]
-    },
-    "288x115x69x69": {
-     "view_of": "115x69x69x288",
-     "transpose": [
-      3,
-      0,
-      1,
-      2
      ],
-     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file."
+     "name": "original"
     }
    }
   },
@@ -799,7 +842,8 @@
         384
        ]
       }
-     ]
+     ],
+     "name": "small"
     },
     "3072x3072x3072": {
      "archive": "Miranda/SDRBENCH-Miranda-3072x3072x3072.tar.gz",
@@ -816,7 +860,8 @@
        "name": "density/{0}"
       }
      ],
-     "note": "A single 3072^3 single-precision density field of a late Rayleigh-Taylor time step, split into 96 slabs density/00 ... density/95 of shape (32, 3072, 3072) along the slowest axis; np.concatenate of the slabs in order gives the full (3072, 3072, 3072) field."
+     "note": "A single 3072^3 single-precision density field of a late Rayleigh-Taylor time step, split into 96 slabs density/00 ... density/95 of shape (32, 3072, 3072) along the slowest axis; np.concatenate of the slabs in order gives the full (3072, 3072, 3072) field.",
+     "name": "big"
     }
    }
   },
@@ -827,7 +872,8 @@
    "globus_dir": "S3D",
    "variants": {
     "s3d": {
-     "archive": "S3D/SDRBENCH-S3D.tar.gz"
+     "archive": "S3D/SDRBENCH-S3D.tar.gz",
+     "name": "default"
     }
    }
   },
@@ -862,7 +908,8 @@
        "pattern": "([uv])_(\\d+)x\\d+x\\d+Re10k\\.f32",
        "name": "{1}/{0}"
       }
-     ]
+     ],
+     "name": "default"
     }
    }
   },
@@ -872,16 +919,6 @@
    "source": "Princeton Plasma Physics Laboratory (PPPL); https://jychoi-hpc.github.io/adios-python-docs/XGC-mesh-and-field-data.html",
    "globus_dir": "XGC",
    "variants": {
-    "xgc.3d": {
-     "archive": "XGC/xgc.3d.tar.gz",
-     "rules": [
-      {
-       "glob": "*.bp",
-       "dtype": null,
-       "shape": null
-      }
-     ]
-    },
     "xgc": {
      "archive": "XGC/xgc.zip",
      "rules": [
@@ -942,7 +979,19 @@
        "pattern": "xgc\\.mesh\\.bp_(.+?)_[\\dx]+_(?:double|int32_t)",
        "name": "mesh/{0}"
       }
-     ]
+     ],
+     "name": "raw"
+    },
+    "xgc.3d": {
+     "archive": "XGC/xgc.3d.tar.gz",
+     "rules": [
+      {
+       "glob": "*.bp",
+       "dtype": null,
+       "shape": null
+      }
+     ],
+     "name": "adios"
     }
    }
   }

@@ -10,7 +10,9 @@
    "source": "Mark Taylor (SNL)",
    "repo": "sdrbench/cesm-atm",
    "variants": {
-    "1800x3600": {
+    "2d": {
+     "folder": "1800x3600",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/CESM-ATM/SDRBENCH-CESM-ATM-1800x3600.tar.gz",
       "bytes": 1479128264,
@@ -888,7 +890,9 @@
       }
      ]
     },
-    "cleared-1800x3600": {
+    "2d-cleared": {
+     "folder": "cleared-1800x3600",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/CESM-ATM/SDRBENCH-CESM-ATM-cleared-1800x3600.tar.gz",
       "bytes": 1466479759,
@@ -1752,7 +1756,9 @@
       }
      ]
     },
-    "26x1800x3600": {
+    "3d": {
+     "folder": "26x1800x3600",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/CESM-ATM/SDRBENCH-CESM-ATM-26x1800x3600.tar.gz",
       "bytes": 17008462626,
@@ -2165,7 +2171,9 @@
    "source": "EXAALT team (ECP)",
    "repo": "sdrbench/exaalt",
    "variants": {
-    "2869440": {
+    "small": {
+     "folder": "2869440",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAALT/SDRBENCH-EXAALT-2869440.tar.gz",
       "bytes": 62405099,
@@ -2243,6 +2251,8 @@
      ]
     },
     "copper": {
+     "folder": "copper",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAALT/SDRBENCH-EXAALT-copper.tar.gz",
       "bytes": 1019390101,
@@ -2326,6 +2336,8 @@
      ]
     },
     "helium": {
+     "folder": "helium",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAALT/SDRBENCH-EXAALT-helium.tar.gz",
       "bytes": 2510796315,
@@ -2417,7 +2429,9 @@
    "acknowledgment": "Hurricane Isabel data produced by the Weather Research and Forecast (WRF) model, courtesy of NCAR, and the U.S. National Science Foundation (NSF).",
    "repo": "sdrbench/hurricane-isabel",
    "variants": {
-    "100x500x500": {
+    "snapshot": {
+     "folder": "100x500x500",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-100x500x500.tar.gz",
       "bytes": 1253837293,
@@ -2666,7 +2680,9 @@
       }
      ]
     },
-    "CLOUDf": {
+    "CLOUD": {
+     "folder": "CLOUDf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUDf.tar.gz",
       "bytes": 602515799,
@@ -3251,7 +3267,9 @@
       }
      ]
     },
-    "PRECIPf": {
+    "PRECIP": {
+     "folder": "PRECIPf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-PRECIPf.tar.gz",
       "bytes": 4171146445,
@@ -3836,7 +3854,9 @@
       }
      ]
     },
-    "Pf": {
+    "P": {
+     "folder": "Pf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Pf.tar.gz",
       "bytes": 4195779593,
@@ -4421,7 +4441,9 @@
       }
      ]
     },
-    "QCLOUDf": {
+    "QCLOUD": {
+     "folder": "QCLOUDf",
+     "note": "This SDRBench archive also contains the QGRAUPf01-48 fields (there is no separate QGRAUPf archive).",
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUDf.tar.gz",
       "bytes": 3945379633,
@@ -5582,7 +5604,9 @@
       }
      ]
     },
-    "QICEf": {
+    "QICE": {
+     "folder": "QICEf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICEf.tar.gz",
       "bytes": 525745137,
@@ -6167,7 +6191,9 @@
       }
      ]
     },
-    "QRAINf": {
+    "QRAIN": {
+     "folder": "QRAINf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAINf.tar.gz",
       "bytes": 3682790565,
@@ -6752,7 +6778,9 @@
       }
      ]
     },
-    "QSNOWf": {
+    "QSNOW": {
+     "folder": "QSNOWf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOWf.tar.gz",
       "bytes": 4081712826,
@@ -7337,7 +7365,9 @@
       }
      ]
     },
-    "QVAPORf": {
+    "QVAPOR": {
+     "folder": "QVAPORf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QVAPORf.tar.gz",
       "bytes": 4148344128,
@@ -7922,7 +7952,9 @@
       }
      ]
     },
-    "TCf": {
+    "TC": {
+     "folder": "TCf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-TCf.tar.gz",
       "bytes": 3850209174,
@@ -8507,7 +8539,9 @@
       }
      ]
     },
-    "Uf": {
+    "U": {
+     "folder": "Uf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Uf.tar.gz",
       "bytes": 4339996950,
@@ -9092,7 +9126,9 @@
       }
      ]
     },
-    "Vf": {
+    "V": {
+     "folder": "Vf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Vf.tar.gz",
       "bytes": 4283339727,
@@ -9677,7 +9713,9 @@
       }
      ]
     },
-    "Wf": {
+    "W": {
+     "folder": "Wf",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-Wf.tar.gz",
       "bytes": 4443030685,
@@ -10262,7 +10300,9 @@
       }
      ]
     },
-    "CLOUD_log10": {
+    "CLOUD-log10": {
+     "folder": "CLOUD_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-CLOUD_log10.tar.gz",
       "bytes": 558706931,
@@ -10847,7 +10887,9 @@
       }
      ]
     },
-    "QCLOUD_log10": {
+    "QCLOUD-log10": {
+     "folder": "QCLOUD_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QCLOUD_log10.tar.gz",
       "bytes": 201452426,
@@ -11432,7 +11474,9 @@
       }
      ]
     },
-    "QGRAUP_log10": {
+    "QGRAUP-log10": {
+     "folder": "QGRAUP_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QGRAUP_log10.tar.gz",
       "bytes": 3119809670,
@@ -12017,7 +12061,9 @@
       }
      ]
     },
-    "QICE_log10": {
+    "QICE-log10": {
+     "folder": "QICE_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QICE_log10.tar.gz",
       "bytes": 486164569,
@@ -12602,7 +12648,9 @@
       }
      ]
     },
-    "QRAIN_log10": {
+    "QRAIN-log10": {
+     "folder": "QRAIN_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QRAIN_log10.tar.gz",
       "bytes": 3004202200,
@@ -13187,7 +13235,9 @@
       }
      ]
     },
-    "QSNOW_log10": {
+    "QSNOW-log10": {
+     "folder": "QSNOW_log10",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Hurricane-ISABEL/SDRBENCH-Hurricane-ISABEL-QSNOW_log10.tar.gz",
       "bytes": 3537154824,
@@ -13780,7 +13830,9 @@
    "source": "LCLS (SLAC)",
    "repo": "sdrbench/exafel",
    "variants": {
-    "10x32x185x388": {
+    "small": {
+     "folder": "10x32x185x388",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAFEL/SDRBENCH-EXAFEL-10x32x185x388.tar.gz",
       "bytes": 82977072,
@@ -13828,7 +13880,33 @@
       }
      ]
     },
-    "130x1480x1552": {
+    "large": {
+     "folder": "986x32x185x388",
+     "note": null,
+     "archive": {
+      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
+      "bytes": 6622717800,
+      "md5": "b0672d7ff178d52869aba423f4e7466c"
+     },
+     "files": [
+      {
+       "path": "986x32x185x388/EXAFEL-LCLS-986x32x185x388.f32",
+       "name": "data",
+       "bytes": 9059210240,
+       "sha256": "177cda526a1e0f9afb9e3769c1c1f1708215d89dfa45f678419a5109fdaf8c16",
+       "dtype": "<f4",
+       "shape": [
+        986,
+        32,
+        185,
+        388
+       ]
+      }
+     ]
+    },
+    "assembled": {
+     "folder": "130x1480x1552",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAFEL/SDRBENCH-EXAFEL-130x1480x1552.tar.gz",
       "bytes": 1056834391,
@@ -13880,28 +13958,6 @@
        ]
       }
      ]
-    },
-    "986x32x185x388": {
-     "archive": {
-      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXAFEL/SDRBENCH-EXAFEL-986x32x185x388.tar.gz",
-      "bytes": 6622717800,
-      "md5": "b0672d7ff178d52869aba423f4e7466c"
-     },
-     "files": [
-      {
-       "path": "986x32x185x388/EXAFEL-LCLS-986x32x185x388.f32",
-       "name": "data",
-       "bytes": 9059210240,
-       "sha256": "177cda526a1e0f9afb9e3769c1c1f1708215d89dfa45f678419a5109fdaf8c16",
-       "dtype": "<f4",
-       "shape": [
-        986,
-        32,
-        185,
-        388
-       ]
-      }
-     ]
     }
    }
   },
@@ -13913,6 +13969,8 @@
    "repo": "sdrbench/hacc",
    "variants": {
     "medium": {
+     "folder": "medium",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/HACC/EXASKY-HACC-data-medium-size.tar.gz",
       "bytes": 5511978491,
@@ -13997,46 +14055,9 @@
       }
      ]
     },
-    "sbig": {
-     "archive": {
-      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz",
-      "bytes": 10263932205,
-      "md5": "3cdf12fe641def2d02f7facb04725d27"
-     },
-     "files": [
-      {
-       "path": "sbig/27035-xx.f32",
-       "name": "xx",
-       "bytes": 6485670432,
-       "sha256": "0fa9bde260a1316dfc0d59cc3b6717a130d96393ef6e7d6bc11798574f393852",
-       "dtype": "<f4",
-       "shape": [
-        1621417608
-       ]
-      },
-      {
-       "path": "sbig/27035-yy.f32",
-       "name": "yy",
-       "bytes": 6485670432,
-       "sha256": "75f3dc2ce170de9586fec27961fda6f5f7e4df6fcb89de19be0c6a8f22c8c0b6",
-       "dtype": "<f4",
-       "shape": [
-        1621417608
-       ]
-      },
-      {
-       "path": "sbig/27035-zz.f32",
-       "name": "zz",
-       "bytes": 6485670432,
-       "sha256": "a94277f762ac90a3200acce07883a188833151e1112544e10a36eda4785c4d35",
-       "dtype": "<f4",
-       "shape": [
-        1621417608
-       ]
-      }
-     ]
-    },
     "big": {
+     "folder": "big",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/HACC/EXASKY-HACC-data-big-size.tar.gz",
       "bytes": 20849262040,
@@ -14121,7 +14142,50 @@
       }
      ]
     },
-    "multi-timesteps/1840": {
+    "sbig": {
+     "folder": "sbig",
+     "note": null,
+     "archive": {
+      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/HACC/SDRBENCH-EXASKY-HACC-data-sbig-size.tar.gz",
+      "bytes": 10263932205,
+      "md5": "3cdf12fe641def2d02f7facb04725d27"
+     },
+     "files": [
+      {
+       "path": "sbig/27035-xx.f32",
+       "name": "xx",
+       "bytes": 6485670432,
+       "sha256": "0fa9bde260a1316dfc0d59cc3b6717a130d96393ef6e7d6bc11798574f393852",
+       "dtype": "<f4",
+       "shape": [
+        1621417608
+       ]
+      },
+      {
+       "path": "sbig/27035-yy.f32",
+       "name": "yy",
+       "bytes": 6485670432,
+       "sha256": "75f3dc2ce170de9586fec27961fda6f5f7e4df6fcb89de19be0c6a8f22c8c0b6",
+       "dtype": "<f4",
+       "shape": [
+        1621417608
+       ]
+      },
+      {
+       "path": "sbig/27035-zz.f32",
+       "name": "zz",
+       "bytes": 6485670432,
+       "sha256": "a94277f762ac90a3200acce07883a188833151e1112544e10a36eda4785c4d35",
+       "dtype": "<f4",
+       "shape": [
+        1621417608
+       ]
+      }
+     ]
+    },
+    "region1": {
+     "folder": "multi-timesteps/1840",
+     "note": "One region (1840) over about 100 time steps: fields <timestep>/xx, yy, zz (particle count varies per step) and ID (uint64 particle IDs).",
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/HACC/multi-timesteps/1840.tar.gz",
       "bytes": 13884232362,
@@ -17178,7 +17242,9 @@
    "source": "Zarija Lukic (LBNL)",
    "repo": "sdrbench/nyx",
    "variants": {
-    "512x512x512": {
+    "original": {
+     "folder": "512x512x512",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512.tar.gz",
       "bytes": 2883652237,
@@ -17267,7 +17333,9 @@
       }
      ]
     },
-    "512x512x512_log": {
+    "log": {
+     "folder": "512x512x512_log",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/EXASKY/NYX/SDRBENCH-EXASKY-NYX-512x512x512_log.tar.gz",
       "bytes": 2898750078,
@@ -17356,7 +17424,9 @@
    "source": "libint (https://github.com/evaleev/libint), Valeev research group, Virginia Tech",
    "repo": "sdrbench/nwchem",
    "variants": {
-    "nwchem": {
+    "default": {
+     "folder": "nwchem",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/NWChem/SDRBENCH-NWChem-dataset.tar.gz",
       "bytes": 18327482629,
@@ -17457,7 +17527,9 @@
    "source": "RIKEN; contact Guo-Yuan Lien (guoyuan.lien@gmail.com)",
    "repo": "sdrbench/scale-letkf",
    "variants": {
-    "98x1200x1200": {
+    "original": {
+     "folder": "98x1200x1200",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200.tar.gz",
       "bytes": 5165593720,
@@ -17610,7 +17682,9 @@
       }
      ]
     },
-    "98x1200x1200_log": {
+    "log": {
+     "folder": "98x1200x1200_log",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/SCALE_LETKF/SDRBENCH-SCALE-98x1200x1200_log.tar.gz",
       "bytes": 4881517295,
@@ -17771,7 +17845,45 @@
    "source": "QMCPACK performance test; contact Ye Luo (yeluo@anl.gov)",
    "repo": "sdrbench/qmcpack",
    "variants": {
-    "115x69x69x288": {
+    "preconditioned": {
+     "folder": "115x69x69x288",
+     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file.",
+     "transpose": [
+      3,
+      0,
+      1,
+      2
+     ],
+     "archive": {
+      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/QMCPACK/SDRBENCH-QMCPack.tar.gz",
+      "bytes": 587836917,
+      "md5": "8d2daf53046c13c060e652db1fa1f42a"
+     },
+     "files": [
+      {
+       "path": "115x69x69x288/einspline_115_69_69_288.f32",
+       "name": "einspline",
+       "bytes": 630737280,
+       "sha256": "25aa8668b5e6ee24ffe6beb25187822b0f197f9b6c815cecd4550c7c5d9c4b4f",
+       "dtype": "<f4",
+       "shape": [
+        288,
+        115,
+        69,
+        69
+       ],
+       "transpose": [
+        3,
+        0,
+        1,
+        2
+       ]
+      }
+     ]
+    },
+    "original": {
+     "folder": "115x69x69x288",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/QMCPACK/SDRBENCH-QMCPack.tar.gz",
       "bytes": 587836917,
@@ -17808,46 +17920,18 @@
        "shape": null
       }
      ]
-    },
-    "288x115x69x69": {
-     "archive": {
-      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/QMCPACK/SDRBENCH-QMCPack.tar.gz",
-      "bytes": 587836917,
-      "md5": "8d2daf53046c13c060e652db1fa1f42a"
-     },
-     "archive_variant": "115x69x69x288",
-     "note": "Preconditioned layout (orbital, z, y, x) recommended by the QMCPACK users and used in the SDRBench command examples (einspline_288_115_69_69.pre.f32). Not stored separately: computed on load by transposing the original file.",
-     "files": [
-      {
-       "path": "115x69x69x288/einspline_115_69_69_288.f32",
-       "name": "einspline",
-       "bytes": 630737280,
-       "sha256": "25aa8668b5e6ee24ffe6beb25187822b0f197f9b6c815cecd4550c7c5d9c4b4f",
-       "dtype": "<f4",
-       "shape": [
-        288,
-        115,
-        69,
-        69
-       ],
-       "transpose": [
-        3,
-        0,
-        1,
-        2
-       ]
-      }
-     ]
     }
    }
   },
   "miranda": {
    "title": "Miranda",
-   "description": "Hydrodynamics code for large turbulence simulations. 7 fields of 256x384x384 (double precision), and a 3072x3072x3072 field.",
+   "description": "Hydrodynamics code for large turbulence simulations (Rayleigh-Taylor instability). 256x384x384: 7 double-precision fields of an early time step (pressure, viscocity and diffusivity are legacy names of time-derivative restart fields); 3072x3072x3072: one single-precision density field of a late time step in 96 slabs.",
    "source": "LLNL; contact Peter Lindstrom (lindstrom2@llnl.gov)",
    "repo": "sdrbench/miranda",
    "variants": {
-    "256x384x384": {
+    "small": {
+     "folder": "256x384x384",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/Miranda/SDRBENCH-Miranda-256x384x384.tar.gz",
       "bytes": 1873734267,
@@ -17948,96 +18032,9 @@
    "source": "Princeton Plasma Physics Laboratory (PPPL); https://jychoi-hpc.github.io/adios-python-docs/XGC-mesh-and-field-data.html",
    "repo": "sdrbench/xgc",
    "variants": {
-    "xgc.3d": {
-     "archive": {
-      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/XGC/xgc.3d.tar.gz",
-      "bytes": 1243737415,
-      "md5": "48e57fd34f6c4481baa321a6852e545d"
-     },
-     "files": [
-      {
-       "path": "xgc.3d/xgc.3d.08100.bp",
-       "name": null,
-       "bytes": 170333038,
-       "sha256": "69a14d7d4e979769edd818ce5ba2d13ecf5a8d6060ce236dfdc287ed81dd4a4f",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08200.bp",
-       "name": null,
-       "bytes": 170358738,
-       "sha256": "9ddd9a6bc3a4511b75d335f04f47410c8a40cae8bc2d6fe6df51aa18ddd0fa62",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08300.bp",
-       "name": null,
-       "bytes": 170384438,
-       "sha256": "2609a70f93826d21e9c13594f5a90eddadf803629dd0e3c8ea9bba1d2dc71ff1",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08400.bp",
-       "name": null,
-       "bytes": 170410138,
-       "sha256": "27c3a5c16738f691fa429d2302141b34643cb06c37f49674855c44425cc4672a",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08500.bp",
-       "name": null,
-       "bytes": 170435838,
-       "sha256": "3e35d7e3eb16a12b8eca7c938716f6f31c98ad09dd103a95722a67540e07bd03",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08600.bp",
-       "name": null,
-       "bytes": 170461538,
-       "sha256": "40b71ae53863a8146bf03493516f3a25793b61b4658e30b09eda7f9a86fb589e",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08700.bp",
-       "name": null,
-       "bytes": 170487238,
-       "sha256": "eba3ccabc9ae921aa7fe9ef2f44aa1a5a152865d9cc20a96705df54fb9c29211",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08800.bp",
-       "name": null,
-       "bytes": 170512938,
-       "sha256": "b77560d02f92005d98e3dc75399e8eeb4148764f1a0310d9df7b419149c2c391",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.3d.08900.bp",
-       "name": null,
-       "bytes": 170312478,
-       "sha256": "39e2ca5a5ac7adb44be1b931d82f85592229a297cfad175100b727318ff8f02a",
-       "dtype": null,
-       "shape": null
-      },
-      {
-       "path": "xgc.3d/xgc.mesh.bp",
-       "name": null,
-       "bytes": 2397703,
-       "sha256": "15b5f4d458ee6c4724c28c2c1cdd0a88c0aeb05d2c4c795d998cb37fed81c87c",
-       "dtype": null,
-       "shape": null
-      }
-     ]
-    },
-    "xgc": {
+    "raw": {
+     "folder": "xgc",
+     "note": null,
      "archive": {
       "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/XGC/xgc.zip",
       "bytes": 1531108194,
@@ -18515,6 +18512,97 @@
         20694,
         2
        ]
+      }
+     ]
+    },
+    "adios": {
+     "folder": "xgc.3d",
+     "note": null,
+     "archive": {
+      "url": "https://g-d0cd3f.fd635.8443.data.globus.org/raw-data/XGC/xgc.3d.tar.gz",
+      "bytes": 1243737415,
+      "md5": "48e57fd34f6c4481baa321a6852e545d"
+     },
+     "files": [
+      {
+       "path": "xgc.3d/xgc.3d.08100.bp",
+       "name": null,
+       "bytes": 170333038,
+       "sha256": "69a14d7d4e979769edd818ce5ba2d13ecf5a8d6060ce236dfdc287ed81dd4a4f",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08200.bp",
+       "name": null,
+       "bytes": 170358738,
+       "sha256": "9ddd9a6bc3a4511b75d335f04f47410c8a40cae8bc2d6fe6df51aa18ddd0fa62",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08300.bp",
+       "name": null,
+       "bytes": 170384438,
+       "sha256": "2609a70f93826d21e9c13594f5a90eddadf803629dd0e3c8ea9bba1d2dc71ff1",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08400.bp",
+       "name": null,
+       "bytes": 170410138,
+       "sha256": "27c3a5c16738f691fa429d2302141b34643cb06c37f49674855c44425cc4672a",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08500.bp",
+       "name": null,
+       "bytes": 170435838,
+       "sha256": "3e35d7e3eb16a12b8eca7c938716f6f31c98ad09dd103a95722a67540e07bd03",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08600.bp",
+       "name": null,
+       "bytes": 170461538,
+       "sha256": "40b71ae53863a8146bf03493516f3a25793b61b4658e30b09eda7f9a86fb589e",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08700.bp",
+       "name": null,
+       "bytes": 170487238,
+       "sha256": "eba3ccabc9ae921aa7fe9ef2f44aa1a5a152865d9cc20a96705df54fb9c29211",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08800.bp",
+       "name": null,
+       "bytes": 170512938,
+       "sha256": "b77560d02f92005d98e3dc75399e8eeb4148764f1a0310d9df7b419149c2c391",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.3d.08900.bp",
+       "name": null,
+       "bytes": 170312478,
+       "sha256": "39e2ca5a5ac7adb44be1b931d82f85592229a297cfad175100b727318ff8f02a",
+       "dtype": null,
+       "shape": null
+      },
+      {
+       "path": "xgc.3d/xgc.mesh.bp",
+       "name": null,
+       "bytes": 2397703,
+       "sha256": "15b5f4d458ee6c4724c28c2c1cdd0a88c0aeb05d2c4c795d998cb37fed81c87c",
+       "dtype": null,
+       "shape": null
       }
      ]
     }

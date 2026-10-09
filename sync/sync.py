@@ -419,7 +419,8 @@ def build_catalog(c, state, strict=True):
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
                 errors.append(f"{d}/{v}: duplicate field names {dups} (add a 'pattern'/'name' rule)")
-            entry["variants"][v] = {"archive": {"url": st["url"], "bytes": st["bytes"], "md5": st["md5"]},
+            entry["variants"][v] = {"folder": v, "note": vv.get("note"),
+                                    "archive": {"url": st["url"], "bytes": st["bytes"], "md5": st["md5"]},
                                     "files": fl}
         for v, vv in ds["variants"].items():
             base = entry["variants"].get(vv.get("view_of"))
@@ -427,9 +428,18 @@ def build_catalog(c, state, strict=True):
                 continue
             axes = vv["transpose"]
             entry["variants"][v] = {
-                "archive": base["archive"], "archive_variant": vv["view_of"], "note": vv.get("note"),
+                "folder": vv["view_of"], "note": vv.get("note"), "transpose": axes, "archive": base["archive"],
                 "files": [{**f, "shape": [f["shape"][i] for i in axes], "transpose": axes}
                           for f in base["files"] if f["dtype"] and len(f["shape"]) == len(axes)]}
+        # key by the API variant name, in the order of datasets.json (first = default)
+        named = {}
+        for v, vv in ds["variants"].items():
+            if v in entry["variants"]:
+                n = vv.get("name", v)
+                if n in named:
+                    errors.append(f"{d}: duplicate variant name {n!r}")
+                named[n] = entry["variants"][v]
+        entry["variants"] = named
         if entry["variants"]:
             out["datasets"][d] = entry
     if errors and strict:
@@ -472,6 +482,16 @@ def _example(name, d):
     return v0, (min(arrays, key=lambda f: f["bytes"]) if arrays else None)
 
 
+def _stored_shape(f):
+    t = f.get("transpose")
+    return tuple(f["shape"][t.index(i)] for i in range(len(t))) if t else tuple(f["shape"])
+
+
+def _transpose_suffix(f):
+    t = f.get("transpose")
+    return f".transpose{tuple(t)}  # stored order -> {tuple(f['shape'])}" if t else ""
+
+
 def card_python(name, d):
     """The runnable usage example shown on the card (also executed by the online tests)."""
     v0, f = _example(name, d)
@@ -498,7 +518,7 @@ print(f"ratio {{ratio:.1f}}x, PSNR {{psnr:.1f}} dB, max error {{max_err:.3g}}")
 
 
 def render_card(name, d):
-    total = sum(f["bytes"] for v in d["variants"].values() if "archive_variant" not in v for f in v["files"])
+    total = sum(f["bytes"] for v in d["variants"].values() if "transpose" not in v for f in v["files"])
     sections = []
     for v, vv in d["variants"].items():
         arr = [f for f in vv["files"] if f["dtype"]]
@@ -507,8 +527,8 @@ def render_card(name, d):
         lines = [head, ""]
         if vv.get("note"):
             lines += [vv["note"], ""]
-        if "archive_variant" in vv:
-            lines += [f"Derived layout: no extra files; computed on load from `{vv['archive_variant']}/`.", ""]
+        if "transpose" in vv:
+            lines += [f"Derived layout: no extra files; computed on load by transposing the files in `{vv['folder']}/`.", ""]
         else:
             lines += [f"{len(vv['files'])} files, {human(sum(f['bytes'] for f in vv['files']))}, "
                       f"from [{vv['archive']['url'].rsplit('/', 1)[-1]}]({vv['archive']['url']}).", ""]
@@ -537,7 +557,7 @@ Without the package, any file can be read with `huggingface_hub` and numpy:
 from huggingface_hub import hf_hub_download
 import numpy as np
 p = hf_hub_download("{d['repo']}", "{f['path']}", repo_type="dataset")
-x = np.fromfile(p, dtype="{f['dtype']}").reshape({tuple(f['shape'])})
+x = np.fromfile(p, dtype="{f['dtype']}").reshape({_stored_shape(f)}){_transpose_suffix(f)}
 ```
 """
     others = [v for v in d["variants"] if v != v0]
@@ -695,7 +715,7 @@ def cmd_verify(a):
         if a.only and name not in a.only:
             continue
         # derived (transposed) variants are checked through their base files
-        arrays = [f for v in d["variants"].values() if "archive_variant" not in v for f in v["files"] if f["dtype"]]
+        arrays = [f for v in d["variants"].values() if "transpose" not in v for f in v["files"] if f["dtype"]]
         byname = {}
         for f in arrays:
             byname.setdefault(f["path"].rsplit("/", 1)[-1], []).append(f)

@@ -54,7 +54,7 @@ def fake_dataset(tmp_path, monkeypatch):
                     {"path": "v2/a.d64", "name": "a64", "bytes": 8, "sha256": "0" * 64, "dtype": "<f8", "shape": [1]},
                 ]},
             "v1t": {  # derived layout of v1/a.f32: transpose (2, 0, 1)
-                "archive": {"url": tgz.as_uri(), "bytes": tgz.stat().st_size, "md5": md5}, "archive_variant": "v1",
+                "archive": {"url": tgz.as_uri(), "bytes": tgz.stat().st_size, "md5": md5}, "folder": "v1", "transpose": [2, 0, 1],
                 "files": [{"path": "v1/a.f32", "name": "a", "bytes": a.nbytes, "sha256": sha["a.f32"],
                            "dtype": "<f4", "shape": [4, 2, 3], "transpose": [2, 0, 1]}]}}}}}
     monkeypatch.setattr(core, "catalog", lambda: cat)

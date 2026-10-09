@@ -21,7 +21,7 @@ def all_files():
     for d, ds in CATALOG["datasets"].items():
         for v, vv in ds["variants"].items():
             for f in vv["files"]:
-                yield d, vv.get("archive_variant", v), f
+                yield d, vv.get("folder", v), f
 
 
 def test_catalog_not_empty():
@@ -40,7 +40,7 @@ def test_every_array_size_matches_shape():
 
 def test_paths_unique_and_repos_named():
     for d, ds in CATALOG["datasets"].items():
-        paths = [f["path"] for v in ds["variants"].values() if "archive_variant" not in v for f in v["files"]]
+        paths = [f["path"] for v in ds["variants"].values() if "transpose" not in v for f in v["files"]]
         assert len(paths) == len(set(paths)), d
         assert ds["repo"] == f"sdrbench/{d}"
 
@@ -155,3 +155,10 @@ def test_stream_mirror_restarts_without_flattening(tmp_path):
             tf.addfile(ti, io.BytesIO(b"abcd"))
     files, _, _ = sync.stream_mirror(None, "sdrbench/x", "v", src.as_uri(), tmp_path / "s")
     assert sorted(f["path"] for f in files) == ["v/A/one.f32", "v/B/two.f32"]
+
+
+def test_variant_names_have_no_dimension_strings():
+    import re
+    for d, ds in CATALOG["datasets"].items():
+        for v in ds["variants"]:
+            assert not re.search(r"\d+x\d+", v), (d, v)
