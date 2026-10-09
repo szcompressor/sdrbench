@@ -9,7 +9,7 @@
    "description": "Climate simulation with the Community Earth System Model (CESM), atmosphere component (CAM). Single precision.",
    "source": "Mark Taylor (SNL)",
    "repo": "sdrbench/cesm-atm",
-   "revision": "cb3cd3aef008d4834903dc7aaba24207ca6876a8",
+   "revision": "461ce06b8ae6e00a3192b3c1d523d3e4c8668901",
    "variants": {
     "2d": {
      "folder": "1800x3600",
@@ -2552,7 +2552,7 @@
    "description": "Molecular dynamics simulation (EXAALT, ECP): atom positions (and velocities for 'small'). Single precision, little-endian.",
    "source": "EXAALT team (ECP)",
    "repo": "sdrbench/exaalt",
-   "revision": "fdd63c3e68af5a9243c8b954aac0b0a3b0736ad0",
+   "revision": "1f26915764c1c654b47caa711ee3c3750cd77efa",
    "variants": {
     "small": {
      "folder": "2869440",
@@ -2858,7 +2858,7 @@
    "source": "NCAR; released for the IEEE Visualization 2004 Contest (http://vis.computer.org/vis2004contest/data.html)",
    "acknowledgment": "Hurricane Isabel data produced by the Weather Research and Forecast (WRF) model, courtesy of NCAR, and the U.S. National Science Foundation (NSF).",
    "repo": "sdrbench/hurricane-isabel",
-   "revision": "212031b7dc82258bc10890ee35fa66b29ab01071",
+   "revision": "147f5278fe9122ee5eff5be467007fcb9e4389dd",
    "variants": {
     "snapshot": {
      "folder": "100x500x500",
@@ -16155,7 +16155,7 @@
    "description": "X-ray free-electron laser images from the LCLS instrument (SLAC): events x detector panels x rows x columns.",
    "source": "LCLS (SLAC)",
    "repo": "sdrbench/exafel",
-   "revision": "484ab4c6a935c25c8f5ad09854d71c6c1316912c",
+   "revision": "2dad783ecbc68c744bd60db82c280a9f4ba82f32",
    "variants": {
     "small": {
      "folder": "10x32x185x388",
@@ -16313,7 +16313,7 @@
    "source": "HACC team (ECP ExaSky); https://www.alcf.anl.gov/science/case-studies/opencosmo-community-portal-cosmological-simulations",
    "citation_extra": "Please cite Heitmann et al., Astrophys. J. Suppl. 252 (2021) 2, 19 (https://inspirehep.net/literature/1799008) when using HACC data.",
    "repo": "sdrbench/hacc",
-   "revision": "36891dee003a1aa08bb7da3c3e6b90badcd661e6",
+   "revision": "808f9b877725a48c1f56899cbabb08a43917b9a5",
    "variants": {
     "medium": {
      "folder": "medium",
@@ -34870,7 +34870,7 @@
    "description": "Cosmology: adaptive-mesh hydrodynamics + N-body simulation (Nyx), 512 x 512 x 512, single precision, little-endian.",
    "source": "Zarija Lukic (LBNL)",
    "repo": "sdrbench/nyx",
-   "revision": "e6ce03914098d6dcdf160cb3fe567e7c784c6edf",
+   "revision": "39c39bf418c7928fbf7f1ac99eca4ae2dfbec7f7",
    "variants": {
     "original": {
      "folder": "512x512x512",
@@ -35079,7 +35079,7 @@
    "description": "Two-electron repulsion integrals over Gaussian-type orbital basis sets, computed with libint (Valeev group, Virginia Tech), an integral engine of NWChemEx; 1D arrays.",
    "source": "libint (https://github.com/evaleev/libint), Valeev research group, Virginia Tech",
    "repo": "sdrbench/nwchem",
-   "revision": "f657d8be5aa99a0e0147f0f974c3e040fd0e8cbe",
+   "revision": "5263287b2bb37acd19ee13742d3c34e0da9c46d5",
    "variants": {
     "default": {
      "folder": "nwchem",
@@ -35208,7 +35208,7 @@
    "description": "Weather simulation from the SCALE-RM model with LETKF data assimilation (RIKEN): 12 variables on 98 x 1200 x 1200 (z, y, x), single precision, little-endian.",
    "source": "RIKEN; contact Guo-Yuan Lien (guoyuan.lien@gmail.com)",
    "repo": "sdrbench/scale-letkf",
-   "revision": "18665ddfb989801761218b81e665072f998a23ff",
+   "revision": "9973bb5125ca4894e251731300f1f16233e4861f",
    "variants": {
     "original": {
      "folder": "98x1200x1200",
@@ -35577,7 +35577,7 @@
    "description": "Many-body ab initio Quantum Monte Carlo (QMCPACK): 288 einspline orbitals on a 115 x 69 x 69 grid, single precision, little-endian.",
    "source": "QMCPACK performance test; contact Ye Luo (yeluo@anl.gov)",
    "repo": "sdrbench/qmcpack",
-   "revision": "9e249de7ffc01865e319710e3993e84bf0bf1833",
+   "revision": "1518533baeeffa9dad33910ff639029bfac91f88",
    "variants": {
     "preconditioned": {
      "folder": "115x69x69x288",
@@ -35674,7 +35674,7 @@
    "description": "Rayleigh-Taylor instability simulated with LLNL's Miranda hydrodynamics code.",
    "source": "LLNL; contact Peter Lindstrom (lindstrom2@llnl.gov)",
    "repo": "sdrbench/miranda",
-   "revision": "cd543db67fcb47de3c645312f2db9a27198a9af7",
+   "revision": "47962eb778484d5bce79c85df3dc13b207d5de7f",
    "variants": {
     "small": {
      "folder": "256x384x384",
@@ -37166,7 +37166,7 @@
    "description": "Statistically planar premixed methane flame simulated with S3D (SNL): 11 variables on 500 x 500 x 500, double precision, little-endian.",
    "source": "Hemanth Kolla (SNL, hnkolla@sandia.gov)",
    "repo": "sdrbench/s3d",
-   "revision": "e1229e5a4606482948fd3e8272a1dd1ab645dc7e",
+   "revision": "65350dbf8f4708ae6030af696e0ed28ea883d9a9",
    "variants": {
     "default": {
      "folder": "s3d",
@@ -38358,7 +38358,7 @@
    "description": "2D decaying turbulence at Re = 10,000 simulated with Basilisk (http://basilisk.fr/): velocity components u, v over time, single precision, little-endian. The first time step is an all-zero placeholder.",
    "source": "M. Xia, Y. Li, P. Jiao, B. Wang, X. Liang and H. Guo, \"Time-Varying Vector Field Compression with Preserved Critical Point Trajectories,\" IEEE ICDE 2026, pp. 2235-2249, doi:10.1109/ICDE65706.2026.00168",
    "repo": "sdrbench/basilisk-turbulence",
-   "revision": "9b98ad8cb9a44ff91e46ebcd85ac74ffd3d4373a",
+   "revision": "8fce886decb12b9b15b283203260129c6fe22910",
    "variants": {
     "small": {
      "folder": "basilisk",
@@ -38463,7 +38463,7 @@
    "description": "Gyrokinetic fusion plasma simulation (XGC, PPPL): fields on an unstructured mesh of 20694 nodes x 512 toroidal planes, 9 time steps, double precision.",
    "source": "Princeton Plasma Physics Laboratory (PPPL); https://jychoi-hpc.github.io/adios-python-docs/XGC-mesh-and-field-data.html",
    "repo": "sdrbench/xgc",
-   "revision": "f2518596a116a47c2e439417e17f4d9458012ccb",
+   "revision": "03a6aba01a93db8eab3fc2f41c9c17672b78f6d4",
    "variants": {
     "raw": {
      "folder": "xgc",
