@@ -257,7 +257,11 @@ def test_local_root_is_used_before_downloading(fake_dataset, monkeypatch, tmp_pa
     (dl / "b.d64").write_bytes(fake_dataset["b"].tobytes())
     monkeypatch.setenv("SDRBENCH_DATA", str(tmp_path / "dl"))
     np.testing.assert_array_equal(sdrbench.dataset("fake")["sub/b"], fake_dataset["b"])
-    # a local file with the wrong size is ignored
+    # a local file with the wrong size is ignored (release the memmap first: Windows cannot
+    # rewrite a file that is mapped)
+    del x
+    import gc
+    gc.collect()
     (raw / "a.f32").write_bytes(b"short")
     core._name_index.cache_clear()
     with pytest.warns(UserWarning, match="falling back"):   # local copy ignored -> HF (broken here) -> Globus
